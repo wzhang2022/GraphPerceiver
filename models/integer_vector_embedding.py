@@ -15,11 +15,11 @@ class IntegerVectorEmbedding(nn.Module):
         else:
             self.embeddings = nn.ModuleList([nn.Embedding(num_embedding, output_dim, padding_idx=pad_idx) for _ in range(input_dim)])
 
-    def forward(self, int_vec):
+    def forward(self, data, mask=None):
         # int_vec = (batch_size, num_nodes, input_dim)
-        bs, num_nodes, input_dim = int_vec.shape
+        bs, num_nodes, input_dim = data.shape
         out = torch.zeros([bs, num_nodes, self.output_dim]).to(self.device)
         for i in range(self.input_dim):
-            out += self.embeddings[i](int_vec[:, :, i])
+            out += self.embeddings[i](data[:, :, i])
         return out
 

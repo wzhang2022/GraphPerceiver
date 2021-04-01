@@ -70,7 +70,7 @@ def evaluate(model, iterator, criterion, device):
     epoch_loss = 0
     accuracy = 0
     with torch.no_grad():
-        for i, (batch_X, batch_y) in enumerate(iterator):
+        for i, (batch_X, X_mask, batch_y) in enumerate(iterator):
             batch_y = batch_y.to(device)
             output = model(transform_graph_to_input(batch_X, device))
             accuracy += sum(batch_y == torch.argmax(output, dim=1))
