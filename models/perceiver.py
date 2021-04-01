@@ -1,4 +1,3 @@
-from math import pi, log
 from functools import wraps
 
 import torch
@@ -125,10 +124,7 @@ class Perceiver(nn.Module):
             input_dim,
             depth,
             pe_module=None,
-            input_channels=3,
-            input_axis=2,
             num_latents=512,
-            cross_dim=512,
             latent_dim=512,
             cross_heads=1,
             latent_heads=8,
