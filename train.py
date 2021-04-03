@@ -16,37 +16,40 @@ def transform_graph_to_input(batch_X, device):
     return node_features.to(device)
 
 
-def train_epoch(model, iterator, optimizer, clip, criterion, device):
-    model.train()
-    epoch_loss = 0
-    for i, (batch_X, X_mask, batch_y) in enumerate(iterator):
+def run_epoch(model, iterator, optimizer, clip, criterion, device, mode="train"):
+    if mode == "train":
+        model.train()
         optimizer.zero_grad()
+    elif mode == "eval":
+        model.eval()
+        assert(optimizer is None)
+        assert(clip is None)
+    else:
+        raise Exception("Invalid mode provided")
+
+    epoch_loss = 0
+    num_samples = 0
+    accuracy = 0
+    for i, (batch_X, X_mask, batch_y) in enumerate(iterator):
+        # forward pass
         output = model(transform_graph_to_input(batch_X, device), X_mask[0].to(device))
         loss = criterion(output, batch_y.to(device))
-        loss.backward()
-        torch.nn.utils.clip_grad_norm_(model.parameters(), clip)
-        optimizer.step()
-        epoch_loss += loss.item()
+
+        # backward pass
+        if mode == "train":
+            loss.backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), clip)
+            optimizer.step()
+            optimizer.zero_grad()
+
+        # record metrics
+        accuracy += sum(batch_y.to(device) == torch.argmax(output, dim=1))
+        epoch_loss += loss.item() * len(batch_y)
+        num_samples += len(batch_y)
         if i % 100 == 99:
-            print(f"Finished batch {i + 1} training")
+            print(f"Finished batch {i + 1} in mode {mode}")
 
-    return epoch_loss / len(iterator)
-
-
-def evaluate_epoch(model, iterator, criterion, device):
-    model.eval()
-    epoch_loss = 0
-    accuracy = 0
-    with torch.no_grad():
-        for i, (batch_X, X_mask, batch_y) in enumerate(iterator):
-            batch_y = batch_y.to(device)
-            output = model(transform_graph_to_input(batch_X, device), X_mask[0].to(device))
-            accuracy += sum(batch_y == torch.argmax(output, dim=1))
-            loss = criterion(output, batch_y)
-            epoch_loss += loss.item()
-            if i % 100 == 99:
-                print(f"Finished batch {i + 1} validation")
-    return epoch_loss / len(iterator), accuracy / len(iterator)
+    return epoch_loss / num_samples, accuracy / num_samples
 
 
 def epoch_time(start_time, end_time):
@@ -80,8 +83,8 @@ if __name__ == "__main__":
 
             start_time = time.time()
 
-            train_loss = train_epoch(model, train_loader, optimizer, args.clip, criterion, device)
-            valid_loss, valid_accuracy = evaluate_epoch(model, valid_loader, criterion, device)
+            train_loss, train_accuracy = run_epoch(model, train_loader, optimizer, args.clip, criterion, device, "train")
+            valid_loss, valid_accuracy = run_epoch(model, valid_loader, None, None, criterion, device, "eval")
 
             end_time = time.time()
 
@@ -91,7 +94,8 @@ if __name__ == "__main__":
                 best_valid_loss = valid_loss
                 torch.save(model.state_dict(), f"{args.save_file}.pt")
 
-            wandb.log({"validation_loss": valid_loss, "train_loss": train_loss, "accuracy": valid_accuracy})
+            wandb.log({"validation_loss": valid_loss, "train_loss": train_loss,
+                       "valid_accuracy": valid_accuracy, "train_accuracy": train_accuracy})
             print(f'Epoch: {epoch + 1:02} | Time: {epoch_mins}m {epoch_secs}s')
-            print(f'\tTrain Loss: {train_loss:.3f} | Train PPL: {math.exp(train_loss):7.3f}')
-            print(f'\t Val. Loss: {valid_loss:.3f} |  Val. PPL: {math.exp(valid_loss):7.3f}')
+            print(f'\tTrain Loss: {train_loss:.3f}, Train Accuracy: {train_accuracy:.3f}')
+            print(f'\t Val. Loss: {valid_loss:.3f}, Val. Accuracy: {valid_accuracy:.3f}')
