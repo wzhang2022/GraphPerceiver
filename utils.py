@@ -1,12 +1,23 @@
-from models.perceiver import Perceiver
-from models.positional_encodings import FourierEncode
 import argparse
 import torch
-from torch.nn.utils.rnn import pad_sequence
 
 import traceback
 import warnings
 import sys
+import random
+import numpy as np
+
+from torch.nn.utils.rnn import pad_sequence
+from ogb.utils.features import get_atom_feature_dims, get_bond_feature_dims
+
+# set random seeds
+SEED = 1234
+
+random.seed(SEED)
+np.random.seed(SEED)
+torch.manual_seed(SEED)
+torch.cuda.manual_seed(SEED)
+torch.backends.cudnn.deterministic = True
 
 
 def warn_with_traceback(message, category, filename, lineno, file=None, line=None):
@@ -62,3 +73,48 @@ def parse_args():
 #         attn_dropout = 0.,
 #         ff_dropout = 0.,
 #         weight_tie_layers = False)
+
+
+def hiv_graph_collate(batch):
+    """
+
+    :param batch: List[{'edge_index': np.array(2, num_edges), 'edge_feat': np.array(num_edges, num_edge_feat),
+                        'node_feat': np.array(num_nodes, num_node_feat), 'num_nodes': num_nodes}]
+    :return: graph description as tensors, graph masks, graph labels
+    """
+    full_atom_feature_dims = get_atom_feature_dims()
+    full_bond_feature_dims = get_bond_feature_dims()
+    node_features, node_mask = variable_pad_sequence([torch.as_tensor(item[0]['node_feat']) for item in batch],
+                                                     full_atom_feature_dims)
+    edge_features, edge_mask = variable_pad_sequence([torch.as_tensor(item[0]['edge_feat']) for item in batch],
+                                                     full_bond_feature_dims)
+    edge_index = pad_sequence([torch.as_tensor(item[0]['edge_index'].transpose()) for item in batch], batch_first=True,
+                              padding_value=-1)
+    labels = torch.Tensor([item[1][0] for item in batch]).long()
+    return (node_features, edge_index, edge_features), (node_mask, edge_mask), labels
+
+
+def variable_pad_sequence(sequences, pad_idxs):
+    """
+
+    :param sequences: list of batch_size sequences of tensors of shape (num_tokens, num_features)
+    :param pad_idxs: list of num_features length, where we pad with a different length for each feature
+    :return: feature tensor (batch_size, max_num_tokens, num_features), mask tensor (batch_size, max_num_tokens)
+    """
+    batch_size = len(sequences)
+    max_num_tokens = max([seq.shape[0] for seq in sequences])
+    num_features = sequences[0].shape[1]
+    output = sequences[0].new_full((batch_size, max_num_tokens, num_features), 0)
+    mask = torch.as_tensor(np.zeros((batch_size, max_num_tokens), dtype=np.bool))
+    for i in range(batch_size):
+        output[i] = torch.as_tensor(pad_idxs)
+        seq = sequences[i]
+        output[i, :len(seq)] = seq
+        mask[i, :len(seq)] = True
+    return output, mask
+
+
+def count_parameters(model):
+    return sum(p.numel() for p in model.parameters() if p.requires_grad)
+
+
