@@ -74,7 +74,7 @@ if __name__ == "__main__":
     valid_loader = DataLoader([dataset[i] for i in split_idx["valid"]], batch_size=args.batch_size, shuffle=False, collate_fn=hiv_graph_collate)
     test_loader = DataLoader([dataset[i] for i in split_idx["test"]], batch_size=args.batch_size, shuffle=False, collate_fn=hiv_graph_collate)
 
-    with wandb.init(project="GraphPerceiver", config=args):
+    with wandb.init(project="GraphPerceiver", entity="wzhang2022", config=args):
         wandb.run.name = args.run_name
         model = HIVModel(atom_emb_dim=64, bond_emb_dim=16, perceiver_depth=args.depth).to(device)
         print(f"Model has {count_parameters(model)} parameters")

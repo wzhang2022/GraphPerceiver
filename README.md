@@ -31,5 +31,13 @@ TODO:
 - Set up code to run an extensive hyperparameter search.
 - Implement Laplacian Eigenvector positional encodings, as in [https://arxiv.org/pdf/2012.09699.pdf][here].
 - Maybe there is a better way of encoding graphs than just a set of edges?
+- Run until we observe memorization of training data and deep double descent.
+This [https://arxiv.org/pdf/2002.08709.pdf][a] might be an interesting regularizer to investigate?
+
+Guidelines for good collaboration:
+- Include your name in the `run_name` so that we know who is responsible for each run.
+- Remove your failed runs from wandb so that it does not clutter, but do not delete other people's runs without consulting them first.
+- Use meaningful run names. Not just "run1" or "run5". We can play around with wandb features so that we can organize runs better. If you know how to do this or learn how to, let us know.
 
 [here]: https://arxiv.org/pdf/2012.09699.pdf
+[a]: https://arxiv.org/pdf/2002.08709.pdf
