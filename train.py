@@ -1,14 +1,18 @@
-from ogb.graphproppred import GraphPropPredDataset
 from torch.utils.data import DataLoader
 import torch
 import torch.nn as nn
 import wandb
 import time
-import math
+
+from ogb.graphproppred import GraphPropPredDataset
+from ogb.graphproppred import Evaluator
 
 
 from utils import parse_args, hiv_graph_collate, count_parameters
 from models.perceiver_graph_models import HIVModel
+
+
+evaluator = Evaluator(name="ogbg-molhiv")
 
 
 def transform_graph_to_input(batch_X, device):
@@ -20,7 +24,7 @@ def run_epoch(model, iterator, optimizer, clip, criterion, device, mode="train")
     if mode == "train":
         model.train()
         optimizer.zero_grad()
-    elif mode == "eval":
+    elif mode == "val" or mode == "test":
         model.eval()
         assert(optimizer is None)
         assert(clip is None)
@@ -30,6 +34,7 @@ def run_epoch(model, iterator, optimizer, clip, criterion, device, mode="train")
     epoch_loss = 0
     num_samples = 0
     accuracy = 0
+    evaluator_dict = {'y_true': [], 'y_pred': []}
     for i, (batch_X, X_mask, batch_y) in enumerate(iterator):
         # forward pass
         output = model(transform_graph_to_input(batch_X, device), X_mask[0].to(device))
@@ -46,10 +51,14 @@ def run_epoch(model, iterator, optimizer, clip, criterion, device, mode="train")
         accuracy += sum(batch_y.to(device) == torch.argmax(output, dim=1))
         epoch_loss += loss.item() * len(batch_y)
         num_samples += len(batch_y)
+        evaluator_dict['y_true'] += batch_y.tolist()
+        evaluator_dict['y_pred'] += (output[:, 1] - output[:, 0]).tolist()
         if i % 100 == 99:
             print(f"Finished batch {i + 1} in mode {mode}")
 
-    return epoch_loss / num_samples, accuracy / num_samples
+    evaluator_dict['y_true'] = torch.as_tensor(evaluator_dict['y_true']).unsqueeze(-1)
+    evaluator_dict['y_pred'] = torch.as_tensor(evaluator_dict['y_pred']).unsqueeze(-1)
+    return epoch_loss / num_samples, accuracy / num_samples, evaluator.eval(evaluator_dict)['rocauc']
 
 
 def epoch_time(start_time, end_time):
@@ -72,30 +81,31 @@ if __name__ == "__main__":
 
     with wandb.init(project="GraphPerceiver", config=args):
         wandb.run.name = args.run_name
-        model = HIVModel(atom_emb_dim=64, perceiver_depth=3).to(device)
+        model = HIVModel(atom_emb_dim=64, perceiver_depth=args.depth).to(device)
         print(f"Model has {count_parameters(model)} parameters")
         optimizer = torch.optim.SGD(model.parameters(), lr=args.learning_rate)
         criterion = nn.CrossEntropyLoss(reduction="mean")
         wandb.watch(model, criterion, log="all", log_freq=1000)
         best_valid_loss = float('inf')
-
         for epoch in range(args.n_epochs):
 
             start_time = time.time()
 
-            train_loss, train_accuracy = run_epoch(model, train_loader, optimizer, args.clip, criterion, device, "train")
-            valid_loss, valid_accuracy = run_epoch(model, valid_loader, None, None, criterion, device, "eval")
+            train_loss, train_accuracy, train_roc = run_epoch(model, train_loader, optimizer, args.clip, criterion, device, "train")
+            val_loss, val_accuracy, val_roc = run_epoch(model, valid_loader, None, None, criterion, device, "val")
+            test_loss, test_accuracy, test_roc = run_epoch(model, test_loader, None, None, criterion, device, "test")
 
             end_time = time.time()
 
             epoch_mins, epoch_secs = epoch_time(start_time, end_time)
 
-            if valid_loss < best_valid_loss:
-                best_valid_loss = valid_loss
+            if val_loss < best_valid_loss:
+                best_valid_loss = val_loss
                 torch.save(model.state_dict(), f"{args.save_file}.pt")
 
-            wandb.log({"validation_loss": valid_loss, "train_loss": train_loss,
-                       "valid_accuracy": valid_accuracy, "train_accuracy": train_accuracy})
+            wandb.log({"test_loss": test_loss, "val_loss": val_loss, "train_loss": train_loss,
+                       "test_accuracy": test_accuracy, "val_accuracy": val_accuracy, "train_accuracy": train_accuracy,
+                       "test_roc": test_roc, "val_roc": val_roc, "test_roc": test_roc})
             print(f'Epoch: {epoch + 1:02} | Time: {epoch_mins}m {epoch_secs}s')
-            print(f'\tTrain Loss: {train_loss:.3f}, Train Accuracy: {train_accuracy:.3f}')
-            print(f'\t Val. Loss: {valid_loss:.3f}, Val. Accuracy: {valid_accuracy:.3f}')
+            print(f'\tTrain Loss: {train_loss:.3f}, Train ROC: {train_roc:.3f}')
+            print(f'\t Val. Loss: {val_loss:.3f}, Val. ROC: {val_roc:.3f}, Test ROC: {test_roc:.3f}')

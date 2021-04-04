@@ -12,7 +12,7 @@ class HIVModel(nn.Module):
             depth=perceiver_depth,
             num_latents=128,
             latent_dim=256,
-            cross_heads=1,
+            cross_heads=2,
             latent_heads=8,
             cross_dim_head=8,
             latent_dim_head=8,
