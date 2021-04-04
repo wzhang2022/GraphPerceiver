@@ -1,8 +1,9 @@
+import random
 import torch
 import torch.nn as nn
 from models.perceiver import Perceiver
 from models.padded_mol_encoder import PaddedAtomEncoder, PaddedBondEncoder
-from einops import rearrange, repeat
+from einops import rearrange
 
 
 def transform_graph_to_input(batch_X, device):
@@ -46,13 +47,13 @@ class HIVModel(nn.Module):
             depth=perceiver_depth,
             num_latents=128,
             latent_dim=256,
-            cross_heads=2,
+            cross_heads=4,
             latent_heads=8,
             cross_dim_head=8,
             latent_dim_head=8,
             num_classes=2,
-            attn_dropout=0.,
-            ff_dropout=0.,
+            attn_dropout=0,
+            ff_dropout=0.2,
             weight_tie_layers=False
         )
 
@@ -73,6 +74,9 @@ class HIVModel(nn.Module):
         x_1 = self.atom_encoder(node_1)
         x_2 = self.atom_encoder(node_2)
         x_3 = self.bond_encoder(edge_features)
-        x = torch.cat([x_1, x_2, x_3], dim=2)
+        if random.randint(0, 1) == 0:
+            x = torch.cat([x_1, x_2, x_3], dim=2)
+        else:
+            x = torch.cat([x_2, x_1, x_3], dim=2)
         x = self.perceiver(x, mask=X_mask[1].to(device))
         return x
