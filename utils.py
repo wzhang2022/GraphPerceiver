@@ -89,7 +89,7 @@ def hiv_graph_collate(batch):
     edge_features, edge_mask = variable_pad_sequence([torch.as_tensor(item[0]['edge_feat']) for item in batch],
                                                      full_bond_feature_dims)
     edge_index = pad_sequence([torch.as_tensor(item[0]['edge_index'].transpose()) for item in batch], batch_first=True,
-                              padding_value=-1)
+                              padding_value=0)
     labels = torch.Tensor([item[1][0] for item in batch]).long()
     return (node_features, edge_index, edge_features), (node_mask, edge_mask), labels
 

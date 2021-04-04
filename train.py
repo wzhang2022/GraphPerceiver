@@ -9,15 +9,10 @@ from ogb.graphproppred import Evaluator
 
 
 from utils import parse_args, hiv_graph_collate, count_parameters
-from models.perceiver_graph_models import HIVModel
+from models.perceiver_graph_models import HIVModel, HIVModelNodeOnly
 
 
 evaluator = Evaluator(name="ogbg-molhiv")
-
-
-def transform_graph_to_input(batch_X, device):
-    node_features, edge_index, edge_features = batch_X
-    return node_features.to(device)
 
 
 def run_epoch(model, iterator, optimizer, clip, criterion, device, mode="train"):
@@ -37,7 +32,7 @@ def run_epoch(model, iterator, optimizer, clip, criterion, device, mode="train")
     evaluator_dict = {'y_true': [], 'y_pred': []}
     for i, (batch_X, X_mask, batch_y) in enumerate(iterator):
         # forward pass
-        output = model(transform_graph_to_input(batch_X, device), X_mask[0].to(device))
+        output = model(batch_X, X_mask, device)
         loss = criterion(output, batch_y.to(device))
 
         # backward pass
@@ -81,7 +76,7 @@ if __name__ == "__main__":
 
     with wandb.init(project="GraphPerceiver", config=args):
         wandb.run.name = args.run_name
-        model = HIVModel(atom_emb_dim=64, perceiver_depth=args.depth).to(device)
+        model = HIVModel(atom_emb_dim=64, bond_emb_dim=16, perceiver_depth=args.depth).to(device)
         print(f"Model has {count_parameters(model)} parameters")
         optimizer = torch.optim.SGD(model.parameters(), lr=args.learning_rate)
         criterion = nn.CrossEntropyLoss(reduction="mean")
