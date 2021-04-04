@@ -79,7 +79,7 @@ if __name__ == "__main__":
         model = HIVModel(atom_emb_dim=64, bond_emb_dim=16, perceiver_depth=args.depth).to(device)
         print(f"Model has {count_parameters(model)} parameters")
         optimizer = torch.optim.SGD(model.parameters(), lr=args.learning_rate)
-        criterion = nn.CrossEntropyLoss(reduction="mean")
+        criterion = nn.CrossEntropyLoss(reduction="mean", weight=torch.as_tensor([1232 / 32901, 1]).to(device)) # correct for class imbalance in HIV dataset
         wandb.watch(model, criterion, log="all", log_freq=1000)
         best_valid_loss = float('inf')
         for epoch in range(args.n_epochs):
