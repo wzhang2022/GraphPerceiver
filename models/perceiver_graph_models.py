@@ -114,19 +114,25 @@ class HIVModelLPE(nn.Module):
         :param device: cuda or cpu
         """
         node_features, edge_index, edge_features, LPE = batch_X[0].to(device), batch_X[1].to(device), batch_X[2].to(device), batch_X[3].to(device)
-        bs = node_features.shape[0]
+        bs, num_nodes, _ = node_features.shape
+        num_edges = edge_features.shape[1]
         
         flat_node_features = rearrange(node_features, "b n f -> (b n) f")
         flat_LPE = rearrange(LPE, "b n k -> (b n) k")
         flat_edge_index = rearrange(edge_index, "b m e-> (b m) e")
         
-        flat_node_1 = torch.index_select(flat_node_features, dim=0, index=flat_edge_index[:, 0])
-        flat_node_2 = torch.index_select(flat_node_features, dim=0, index=flat_edge_index[:, 1])
+        # make indices in flattened array correspond to correct feature/LPE data
+        index_shift = torch.arange(bs).to(device).repeat_interleave(num_edges) * num_nodes
+        flat_edge_index_adjusted_1 = flat_edge_index[:, 0] + index_shift      # head
+        flat_edge_index_adjusted_2 = flat_edge_index[:, 1] + index_shift      # tail
+        
+        flat_node_1 = torch.index_select(flat_node_features, dim=0, index=flat_edge_index_adjusted_1)
+        flat_node_2 = torch.index_select(flat_node_features, dim=0, index=flat_edge_index_adjusted_2)
         node_1 = rearrange(flat_node_1, "(b m) f -> b m f", b=bs)
         node_2 = rearrange(flat_node_2, "(b m) f -> b m f", b=bs)
         
-        flat_LPE_node_1 = torch.index_select(flat_LPE, dim=0, index=flat_edge_index[:, 0])
-        flat_LPE_node_2 = torch.index_select(flat_LPE, dim=0, index=flat_edge_index[:, 1])
+        flat_LPE_node_1 = torch.index_select(flat_LPE, dim=0, index=flat_edge_index_adjusted_1)
+        flat_LPE_node_2 = torch.index_select(flat_LPE, dim=0, index=flat_edge_index_adjusted_2)
         LPE_1 = rearrange(flat_LPE_node_1, "(b m) k -> b m k", b=bs)
         LPE_2 = rearrange(flat_LPE_node_2, "(b m) k -> b m k", b=bs)
         
