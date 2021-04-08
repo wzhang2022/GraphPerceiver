@@ -7,6 +7,9 @@ import sys
 import random
 import numpy as np
 
+from scipy.sparse.linalg import eigsh     # not needed?
+from scipy.linalg import eigh
+
 from torch.nn.utils.rnn import pad_sequence
 from ogb.utils.features import get_atom_feature_dims, get_bond_feature_dims
 
@@ -18,6 +21,7 @@ np.random.seed(SEED)
 torch.manual_seed(SEED)
 torch.cuda.manual_seed(SEED)
 torch.backends.cudnn.deterministic = True
+
 
 
 def warn_with_traceback(message, category, filename, lineno, file=None, line=None):
@@ -39,6 +43,10 @@ def parse_args():
 
     # architectural details
     parser.add_argument("--depth", type=int, default=3)
+    
+    # embedding details
+    parser.add_argument("--LPE", type=int, default=0)         # 1 if LPE, 0 o/w
+    parser.add_argument("--k_eigs", type=int, default=0)      # specifies # of e-vectors to use
 
     # training details
     parser.add_argument("--batch_size", type=int, default=64)
@@ -94,6 +102,30 @@ def hiv_graph_collate(batch):
     return (node_features, edge_index, edge_features), (node_mask, edge_mask), labels
 
 
+def LPE_hiv_graph_collate(batch):
+    """
+
+    :param batch: List[{'edge_index': np.array(2, num_edges), 'edge_feat': np.array(num_edges, num_edge_feat),
+                        'node_feat': np.array(num_nodes, num_node_feat), 'num_nodes': num_nodes, 'LPE': embeddings}]
+    :return: graph description as tensors, graph masks, graph labels
+    """
+    full_atom_feature_dims = get_atom_feature_dims()
+    full_bond_feature_dims = get_bond_feature_dims()
+    node_features, node_mask = variable_pad_sequence([torch.as_tensor(item[0]['node_feat']) for item in batch],
+                                                     full_atom_feature_dims)
+    edge_features, edge_mask = variable_pad_sequence([torch.as_tensor(item[0]['edge_feat']) for item in batch],
+                                                     full_bond_feature_dims)
+    edge_index = pad_sequence([torch.as_tensor(item[0]['edge_index'].transpose()) for item in batch], batch_first=True,
+                              padding_value=0)
+    labels = torch.Tensor([item[1][0] for item in batch]).long()
+    
+    k_eigs = batch[0][0]['LPE'].shape[1]
+    laplacian_PE, LPE_mask = variable_pad_sequence([torch.as_tensor(item[0]['LPE'], dtype=torch.float32) for item in batch],
+                                        [0] * k_eigs)
+    
+    return (node_features, edge_index, edge_features, laplacian_PE), (node_mask, edge_mask), labels
+
+
 def variable_pad_sequence(sequences, pad_idxs):
     """
 
@@ -116,5 +148,68 @@ def variable_pad_sequence(sequences, pad_idxs):
 
 def count_parameters(model):
     return sum(p.numel() for p in model.parameters() if p.requires_grad)
+
+
+
+### Laplacian Embeddings Utils
+
+class LPE(object):
+    """
+    Given raw data from GraphPropPredDataset, add first k eigenvectors
+    Args:
+        k (int): Desired number of eigenvectors for PE
+    """
+    def __init__(self, k):
+        self.k = k
+        
+    def __call__(self, data_sample):
+        dictionary = data_sample[0]
+        arr = data_sample[1]
+        
+        # keys: ['edge_index', 'edge_feat', 'node_feat', 'num_nodes']
+        positional_embeddings = get_LPE_embeddings(dictionary['num_nodes'], dictionary['edge_index'], self.k)
+        
+        new_dictionary = {'edge_index': dictionary['edge_index'],
+                          'edge_feat': dictionary['edge_feat'],
+                          'node_feat': dictionary['node_feat'],
+                          'num_nodes': dictionary['num_nodes'],
+                          'LPE': positional_embeddings}
+        
+        return (new_dictionary, arr)
+    
+
+def get_LPE_embeddings(n_nodes, edges, k):
+    """
+    :n_nodes: |V|
+    :edges: [list of head nodes, list of tail nodes]
+    :k: hyperparameter, determines how many eigenvectors to use for PE
+    """
+    A = np.zeros(shape=(n_nodes, n_nodes))           # initialize (negative) adjacency matrix
+    for j in range(len(edges[0])):
+        A[edges[0][j], edges[1][j]] -= 1             # [row (0), column (1)]
+    
+    D_sqrinv = np.zeros(shape=(n_nodes, n_nodes))    # initialize D^{-1/2}
+    for j in range(len(A[0])):
+        deg = sum(A[j])
+        if deg == 0:
+            D_sqrinv[j,j] = 0
+        else:
+            D_sqrinv[j,j] = (-1 * deg) ** (-0.5)
+    
+    L = D_sqrinv @ (A) @ D_sqrinv                     # (normalized) Laplacian
+    for j in range(len(A[0])):
+        L[j,j] += 1                                   # adding I
+    
+    # returns eigenvectors only (no values)    
+    if k >= n_nodes:
+        vecs = eigh(L)[1]
+        if k > n_nodes:
+            zero_vecs = np.zeros(shape=((k-n_nodes), n_nodes))
+            eigvecs = np.concatenate((vecs, zero_vecs.T), axis=1)
+            return eigvecs
+        else:
+            return vecs
+    
+    return eigh(L, eigvals=(n_nodes-k, n_nodes-1))[1]   # eigvals should be deprecated and instead replaced with subset_by_index, but doesn't work
 
 
