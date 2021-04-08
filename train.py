@@ -8,8 +8,8 @@ from ogb.graphproppred import GraphPropPredDataset
 from ogb.graphproppred import Evaluator
 
 
-from utils import parse_args, hiv_graph_collate, LPE_hiv_graph_collate, count_parameters, LPE
-from models.perceiver_graph_models import HIVModel, HIVModelNodeOnly, HIVModelLPE
+from utils import parse_args, hiv_graph_collate, count_parameters, LPE, GraphDataset
+from models.perceiver_graph_models import HIVModel, HIVModelNodeOnly
 
 
 evaluator = Evaluator(name="ogbg-molhiv")
@@ -69,33 +69,31 @@ if __name__ == "__main__":
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     dataset = GraphPropPredDataset(name="ogbg-molhiv", root='dataset/')
-    
     split_idx = dataset.get_idx_split()
-    
-    # add LPE/other transforms here (also change collate_fn)
-    if args.LPE == 1:
-        lapl = LPE(args.k_eigs)        # transform function to add embeddings
-        
-        train_loader = DataLoader([lapl(dataset[i]) for i in split_idx["train"]], batch_size=args.batch_size, shuffle=True, collate_fn=LPE_hiv_graph_collate)
-        valid_loader = DataLoader([lapl(dataset[i]) for i in split_idx["valid"]], batch_size=args.batch_size, shuffle=False, collate_fn=LPE_hiv_graph_collate)
-        test_loader = DataLoader([lapl(dataset[i]) for i in split_idx["test"]], batch_size=args.batch_size, shuffle=False, collate_fn=LPE_hiv_graph_collate)        
-    else:
-        train_loader = DataLoader([dataset[i] for i in split_idx["train"]], batch_size=args.batch_size, shuffle=True, collate_fn=hiv_graph_collate)
-        valid_loader = DataLoader([dataset[i] for i in split_idx["valid"]], batch_size=args.batch_size, shuffle=False, collate_fn=hiv_graph_collate)
-        test_loader = DataLoader([dataset[i] for i in split_idx["test"]], batch_size=args.batch_size, shuffle=False, collate_fn=hiv_graph_collate)
+
+    graph_preprocess_fns = [LPE(args.k_eigs)] if args.k_eigs > 0 else []
+    train_data = GraphDataset([dataset[i] for i in split_idx["train"]], preprocess=graph_preprocess_fns)
+    valid_data = GraphDataset([dataset[i] for i in split_idx["valid"]], preprocess=graph_preprocess_fns)
+    test_data = GraphDataset([dataset[i] for i in split_idx["test"]], preprocess=graph_preprocess_fns)
+
+    train_loader = DataLoader(train_data, batch_size=args.batch_size, shuffle=True, collate_fn=hiv_graph_collate)
+    valid_loader = DataLoader(valid_data, batch_size=args.batch_size, shuffle=True, collate_fn=hiv_graph_collate)
+    test_loader = DataLoader(test_data, batch_size=args.batch_size, shuffle=True, collate_fn=hiv_graph_collate)
+
 
     with wandb.init(project="GraphPerceiver", entity="wzhang2022", config=args):
         wandb.run.name = args.run_name
-        
-        if args.LPE == 1:
-            model = HIVModelLPE(atom_emb_dim=64, bond_emb_dim=16, perceiver_depth=args.depth, LPE_k=args.k_eigs).to(device)
-        else:
-            model = HIVModel(atom_emb_dim=64, bond_emb_dim=16, perceiver_depth=args.depth).to(device)
+        model = HIVModel(atom_emb_dim=args.atom_emb_dim, bond_emb_dim=args.bond_emb_dim, node_preprocess_dim=args.k_eigs,
+                         p_depth=args.depth, p_num_latents=args.num_latents, p_latent_dim=args.num_latents,
+                         p_cross_heads=args.cross_heads, p_latent_heads=args.latent_heads,
+                         p_cross_dim_head=args.cross_dim_head, p_latent_dim_head=args.latent_dim_head,
+                         p_attn_dropout=args.attn_dropout, p_ff_dropout=args.ff_dropout,
+                         p_weight_tie_layers=args.weight_tie_layers).to(device)
         
         print(f"Model has {count_parameters(model)} parameters")
         optimizer = torch.optim.SGD(model.parameters(), lr=args.learning_rate)
         criterion = nn.CrossEntropyLoss(reduction="mean", weight=torch.as_tensor([1232 / 32901, 1]).to(device)) # correct for class imbalance in HIV dataset
-        wandb.watch(model, criterion, log="all", log_freq=1000)
+        # wandb.watch(model, criterion, log="all", log_freq=1000)
         best_valid_loss = float('inf')
         for epoch in range(args.n_epochs):
 

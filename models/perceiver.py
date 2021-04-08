@@ -123,7 +123,6 @@ class Perceiver(nn.Module):
             *,
             input_dim,
             depth,
-            pe_module=None,
             num_latents=512,
             latent_dim=512,
             cross_heads=1,
@@ -138,7 +137,6 @@ class Perceiver(nn.Module):
         super().__init__()
 
         self.latents = nn.Parameter(torch.randn(num_latents, latent_dim))
-        self.pe_module = pe_module
 
         get_cross_attn = lambda: PreNorm(latent_dim,
                                          Attention(latent_dim, input_dim, heads=cross_heads, dim_head=cross_dim_head,
@@ -171,11 +169,6 @@ class Perceiver(nn.Module):
 
     def forward(self, data, mask=None):
         b, *axis, _, device = *data.shape, data.device
-
-        # concat to channels of data and flatten axis
-        if self.pe_module:
-            enc_pos = self.pe_module(data)
-            data = torch.cat((data, enc_pos), dim=-1)
 
         data = rearrange(data, 'b ... d -> b (...) d')
 

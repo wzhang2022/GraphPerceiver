@@ -7,10 +7,10 @@ import sys
 import random
 import numpy as np
 
-from scipy.sparse.linalg import eigsh     # not needed?
 from scipy.linalg import eigh
 
 from torch.nn.utils.rnn import pad_sequence
+from torch.utils.data import Dataset
 from ogb.utils.features import get_atom_feature_dims, get_bond_feature_dims
 
 # set random seeds
@@ -43,9 +43,20 @@ def parse_args():
 
     # architectural details
     parser.add_argument("--depth", type=int, default=3)
+    parser.add_argument("--num_latents", type=int, default=64)
+    parser.add_argument("--latent_dim", type=int, default=128)
+    parser.add_argument("--cross_heads", type=int, default=1)
+    parser.add_argument("--latent_heads", type=int, default=8)
+    parser.add_argument("--cross_dim_head", type=int, default=32)
+    parser.add_argument("--latent_dim_head", type=int, default=32)
+    parser.add_argument("--attn_dropout", type=float, default=0.0)
+    parser.add_argument("--ff_dropout", type=float, default=0.0)
+    parser.add_argument("--weight_tie_layers", type=bool, default=False)
+
     
     # embedding details
-    parser.add_argument("--LPE", type=int, default=0)         # 1 if LPE, 0 o/w
+    parser.add_argument("--atom_emb_dim", type=int, default=50)
+    parser.add_argument("--bond_emb_dim", type=int, default=20)
     parser.add_argument("--k_eigs", type=int, default=0)      # specifies # of e-vectors to use
 
     # training details
@@ -58,72 +69,46 @@ def parse_args():
     return parser.parse_args()
 
 
-# def make_model(args):
-#     if args.model == "perceiver":
-#         model = make_perceiver(args)
-#     else:
-#         raise Exception("invalid model type")
-#     return model
-#
-#
-# def make_perceiver(args):
-#     pe_module = FourierEncode()
-#     return Perceiver(
-#         input_dim=args.input_dim,
-#         pe_module=None,
-#         num_latents = 512,
-#         latent_dim = 512,
-#         cross_heads = 1,
-#         latent_heads = 8,
-#         cross_dim_head = 64,
-#         latent_dim_head = 64,
-#         num_classes = 1000,
-#         attn_dropout = 0.,
-#         ff_dropout = 0.,
-#         weight_tie_layers = False)
+class GraphDataset(Dataset):
+    def __init__(self, graphs, preprocess=[]):
+        """
+        :param graphs: list of dictionaries
+        :param transforms: list of preprocessing functions that are applied to each dictionary, left-to-right
+        """
+        self.graphs = graphs
+        for i in range(len(self.graphs)):
+            for preprocess_fn in preprocess:
+                self.graphs[i] = preprocess_fn(self.graphs[i])
+            if not preprocess:
+                num_nodes = self.graphs[i][0]["num_nodes"]
+                self.graphs[i][0]["node_preprocess_feat"] = np.zeros((num_nodes, 0))
+
+    def __getitem__(self, idx):
+        return self.graphs[idx]
+
+    def __len__(self):
+        return len(self.graphs)
 
 
 def hiv_graph_collate(batch):
     """
 
-    :param batch: List[{'edge_index': np.array(2, num_edges), 'edge_feat': np.array(num_edges, num_edge_feat),
-                        'node_feat': np.array(num_nodes, num_node_feat), 'num_nodes': num_nodes}]
+    :param batch: List[{'edge_index': np.array(2, num_edges), 'node_preprocess_feat': np.array(num_nodes, num_node_preprocess_feat),
+                        'edge_feat': np.array(num_edges, num_edge_feat), 'node_feat': np.array(num_nodes, num_node_feat), 'num_nodes': num_nodes}]
     :return: graph description as tensors, graph masks, graph labels
     """
     full_atom_feature_dims = get_atom_feature_dims()
     full_bond_feature_dims = get_bond_feature_dims()
-    node_features, node_mask = variable_pad_sequence([torch.as_tensor(item[0]['node_feat']) for item in batch],
-                                                     full_atom_feature_dims)
-    edge_features, edge_mask = variable_pad_sequence([torch.as_tensor(item[0]['edge_feat']) for item in batch],
+    node_feat, node_mask = variable_pad_sequence([torch.as_tensor(item[0]['node_feat']) for item in batch],
+                                                 full_atom_feature_dims)
+    node_preprocess_feat = pad_sequence([torch.as_tensor(item[0]['node_preprocess_feat'], dtype=torch.float32) for item in batch],
+                                        batch_first=True, padding_value=0)
+    edge_feat, edge_mask = variable_pad_sequence([torch.as_tensor(item[0]['edge_feat']) for item in batch],
                                                      full_bond_feature_dims)
     edge_index = pad_sequence([torch.as_tensor(item[0]['edge_index'].transpose()) for item in batch], batch_first=True,
                               padding_value=0)
     labels = torch.Tensor([item[1][0] for item in batch]).long()
-    return (node_features, edge_index, edge_features), (node_mask, edge_mask), labels
-
-
-def LPE_hiv_graph_collate(batch):
-    """
-
-    :param batch: List[{'edge_index': np.array(2, num_edges), 'edge_feat': np.array(num_edges, num_edge_feat),
-                        'node_feat': np.array(num_nodes, num_node_feat), 'num_nodes': num_nodes, 'LPE': embeddings}]
-    :return: graph description as tensors, graph masks, graph labels
-    """
-    full_atom_feature_dims = get_atom_feature_dims()
-    full_bond_feature_dims = get_bond_feature_dims()
-    node_features, node_mask = variable_pad_sequence([torch.as_tensor(item[0]['node_feat']) for item in batch],
-                                                     full_atom_feature_dims)
-    edge_features, edge_mask = variable_pad_sequence([torch.as_tensor(item[0]['edge_feat']) for item in batch],
-                                                     full_bond_feature_dims)
-    edge_index = pad_sequence([torch.as_tensor(item[0]['edge_index'].transpose()) for item in batch], batch_first=True,
-                              padding_value=0)
-    labels = torch.Tensor([item[1][0] for item in batch]).long()
-    
-    k_eigs = batch[0][0]['LPE'].shape[1]
-    laplacian_PE, LPE_mask = variable_pad_sequence([torch.as_tensor(item[0]['LPE'], dtype=torch.float32) for item in batch],
-                                        [0] * k_eigs)
-    
-    return (node_features, edge_index, edge_features, laplacian_PE), (node_mask, edge_mask), labels
+    return (node_feat, node_preprocess_feat, edge_index, edge_feat), (node_mask, edge_mask), labels
 
 
 def variable_pad_sequence(sequences, pad_idxs):
@@ -150,8 +135,7 @@ def count_parameters(model):
     return sum(p.numel() for p in model.parameters() if p.requires_grad)
 
 
-
-### Laplacian Embeddings Utils
+# Laplacian Embeddings Utils
 
 class LPE(object):
     """
@@ -173,7 +157,7 @@ class LPE(object):
                           'edge_feat': dictionary['edge_feat'],
                           'node_feat': dictionary['node_feat'],
                           'num_nodes': dictionary['num_nodes'],
-                          'LPE': positional_embeddings}
+                          'node_preprocess_feat': positional_embeddings}
         
         return (new_dictionary, arr)
     
