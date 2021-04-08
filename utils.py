@@ -7,6 +7,8 @@ import sys
 import random
 import numpy as np
 
+from scipy.sparse.linalg import eigsh
+
 from torch.nn.utils.rnn import pad_sequence
 from ogb.utils.features import get_atom_feature_dims, get_bond_feature_dims
 
@@ -117,4 +119,30 @@ def variable_pad_sequence(sequences, pad_idxs):
 def count_parameters(model):
     return sum(p.numel() for p in model.parameters() if p.requires_grad)
 
+
+### Laplacian Embeddings Utils
+
+def get_LPE_embeddings(n_nodes, edges, k):
+    """
+    :n_nodes: |V|
+    :edges: [list of head nodes, list of tail nodes]
+    :k: hyperparameter, determines how many eigenvectors to use for PE
+    """
+    A = np.zeros(shape=(n_nodes, n_nodes))           # initialize (negative) adjacency matrix
+    for j in range(len(edges[0])):
+        A[edges[0][j], edges[1][j]] -= 1             # [row (0), column (1)]
+    
+    D_sqrinv = np.zeros(shape=(n_nodes, n_nodes))    # initialize D^{-1/2}
+    for j in range(len(A[0])):
+        D_sqrinv[j,j] = sum(-1 * A[j]) ** (-0.5)
+    
+    L = D_sqrinv @ (A) @ D_sqrinv                     # (normalized) Laplacian
+    for j in range(len(A[0])):
+        L[j,j] += 1                                   # adding I
+        
+    return eigsh(L, k)[1]                             # returns eigenvectors only (no values)
+
+# def get_evectors(laplacian, k):
+#     ans = eigsh(laplacian, k)
+#     return ans[1]
 
