@@ -7,7 +7,7 @@ import sys
 import random
 import numpy as np
 
-from scipy.sparse.linalg import eigsh
+from scipy.sparse.linalg import eigsh     # not needed?
 from scipy.linalg import eigh
 
 from torch.nn.utils.rnn import pad_sequence
@@ -102,7 +102,7 @@ def hiv_graph_collate(batch):
     return (node_features, edge_index, edge_features), (node_mask, edge_mask), labels
 
 
-def LPE_hiv_graph_collate(batch)
+def LPE_hiv_graph_collate(batch):
     """
 
     :param batch: List[{'edge_index': np.array(2, num_edges), 'edge_feat': np.array(num_edges, num_edge_feat),
@@ -119,7 +119,9 @@ def LPE_hiv_graph_collate(batch)
                               padding_value=0)
     labels = torch.Tensor([item[1][0] for item in batch]).long()
     
-    laplacian_PE = torch.Tensor([item[0]['LPE'] for item in batch])
+    k_eigs = batch[0][0]['LPE'].shape[1]
+    laplacian_PE, LPE_mask = variable_pad_sequence([torch.as_tensor(item[0]['LPE'], dtype=torch.float32) for item in batch],
+                                        [0] * k_eigs)
     
     return (node_features, edge_index, edge_features, laplacian_PE), (node_mask, edge_mask), labels
 
@@ -167,10 +169,10 @@ class LPE(object):
         # keys: ['edge_index', 'edge_feat', 'node_feat', 'num_nodes']
         positional_embeddings = get_LPE_embeddings(dictionary['num_nodes'], dictionary['edge_index'], self.k)
         
-        new_dictionary = {'edge_index': dictionary['edge_index']
-                          'edge_feat': dictionary['edge_feat']
-                          'node_feat': dictionary['node_feat']
-                          'num_nodes': dictionary['num_nodes']
+        new_dictionary = {'edge_index': dictionary['edge_index'],
+                          'edge_feat': dictionary['edge_feat'],
+                          'node_feat': dictionary['node_feat'],
+                          'num_nodes': dictionary['num_nodes'],
                           'LPE': positional_embeddings}
         
         return (new_dictionary, arr)
@@ -188,7 +190,11 @@ def get_LPE_embeddings(n_nodes, edges, k):
     
     D_sqrinv = np.zeros(shape=(n_nodes, n_nodes))    # initialize D^{-1/2}
     for j in range(len(A[0])):
-        D_sqrinv[j,j] = sum(-1 * A[j]) ** (-0.5)
+        deg = sum(A[j])
+        if deg == 0:
+            D_sqrinv[j,j] = 0
+        else:
+            D_sqrinv[j,j] = (-1 * deg) ** (-0.5)
     
     L = D_sqrinv @ (A) @ D_sqrinv                     # (normalized) Laplacian
     for j in range(len(A[0])):
@@ -204,6 +210,6 @@ def get_LPE_embeddings(n_nodes, edges, k):
         else:
             return vecs
     
-    return eigsh(L, k)[1]   
+    return eigh(L, eigvals=(n_nodes-k, n_nodes-1))[1]   # eigvals should be deprecated and instead replaced with subset_by_index, but doesn't work
 
 

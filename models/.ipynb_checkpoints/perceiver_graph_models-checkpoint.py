@@ -80,3 +80,60 @@ class HIVModel(nn.Module):
             x = torch.cat([x_2, x_1, x_3], dim=2)
         x = self.perceiver(x, mask=X_mask[1].to(device))
         return x
+    
+# new model for LPE
+
+class HIVModelLPE(nn.Module):
+    def __init__(self, atom_emb_dim, bond_emb_dim, perceiver_depth, LPE_k):
+        super(HIVModelLPE, self).__init__()
+        self.atom_encoder = PaddedAtomEncoder(emb_dim=atom_emb_dim)
+        self.bond_encoder = PaddedBondEncoder(emb_dim=bond_emb_dim)
+        self.perceiver = Perceiver(
+            input_dim=2 * (atom_emb_dim + LPE_k) + bond_emb_dim,
+            depth=perceiver_depth,
+            num_latents=128,
+            latent_dim=256,
+            cross_heads=4,
+            latent_heads=8,
+            cross_dim_head=8,
+            latent_dim_head=8,
+            num_classes=2,
+            attn_dropout=0,
+            ff_dropout=0.2,
+            weight_tie_layers=False
+        )
+
+    def forward(self, batch_X, X_mask, device):
+        """
+        :param batch_X: (bs, num_nodes, num_node_feat), (bs, num_edges, 2), (bs, num_edges, num_edge_feat), (bs, num_nodes, k)
+        :param X_mask: (bs, num_nodes), (bs, num_edges)
+        :param device: cuda or cpu
+        """
+        node_features, edge_index, edge_features, LPE = batch_X[0].to(device), batch_X[1].to(device), batch_X[2].to(device), batch_X[3].to(device)
+        bs = node_features.shape[0]
+        
+        flat_node_features = rearrange(node_features, "b n f -> (b n) f")
+        flat_LPE = rearrange(LPE, "b n k -> (b n) k")
+        flat_edge_index = rearrange(edge_index, "b m e-> (b m) e")
+        
+        flat_node_1 = torch.index_select(flat_node_features, dim=0, index=flat_edge_index[:, 0])
+        flat_node_2 = torch.index_select(flat_node_features, dim=0, index=flat_edge_index[:, 1])
+        node_1 = rearrange(flat_node_1, "(b m) f -> b m f", b=bs)
+        node_2 = rearrange(flat_node_2, "(b m) f -> b m f", b=bs)
+        
+        flat_LPE_node_1 = torch.index_select(flat_LPE, dim=0, index=flat_edge_index[:, 0])
+        flat_LPE_node_2 = torch.index_select(flat_LPE, dim=0, index=flat_edge_index[:, 1])
+        LPE_1 = rearrange(flat_LPE_node_1, "(b m) k -> b m k", b=bs)
+        LPE_2 = rearrange(flat_LPE_node_2, "(b m) k -> b m k", b=bs)
+        
+        x_1 = self.atom_encoder(node_1)
+        x_2 = self.atom_encoder(node_2)
+        x_3 = self.bond_encoder(edge_features)
+        
+        if random.randint(0, 1) == 0:
+            x = torch.cat([x_1, LPE_1, x_2, LPE_2, x_3], dim=2)
+        else:
+            x = torch.cat([x_2, LPE_2, x_1, LPE_1, x_3], dim=2)
+            
+        x = self.perceiver(x, mask=X_mask[1].to(device))
+        return x

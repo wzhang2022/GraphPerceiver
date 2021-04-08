@@ -8,8 +8,8 @@ from ogb.graphproppred import GraphPropPredDataset
 from ogb.graphproppred import Evaluator
 
 
-from utils import parse_args, hiv_graph_collate, count_parameters, LPE
-from models.perceiver_graph_models import HIVModel, HIVModelNodeOnly
+from utils import parse_args, hiv_graph_collate, LPE_hiv_graph_collate, count_parameters, LPE
+from models.perceiver_graph_models import HIVModel, HIVModelNodeOnly, HIVModelLPE
 
 
 evaluator = Evaluator(name="ogbg-molhiv")

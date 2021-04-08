@@ -85,7 +85,7 @@ class HIVModel(nn.Module):
 
 class HIVModelLPE(nn.Module):
     def __init__(self, atom_emb_dim, bond_emb_dim, perceiver_depth, LPE_k):
-        super(HIVModel, self).__init__()
+        super(HIVModelLPE, self).__init__()
         self.atom_encoder = PaddedAtomEncoder(emb_dim=atom_emb_dim)
         self.bond_encoder = PaddedBondEncoder(emb_dim=bond_emb_dim)
         self.perceiver = Perceiver(
@@ -123,8 +123,8 @@ class HIVModelLPE(nn.Module):
         
         flat_LPE_node_1 = torch.index_select(flat_LPE, dim=0, index=flat_edge_index[:, 0])
         flat_LPE_node_2 = torch.index_select(flat_LPE, dim=0, index=flat_edge_index[:, 1])
-        LPE_1 = rearrange(flat_node_1, "(b m) k -> b m k", b=bs)
-        LPE_2 = rearrange(flat_node_2, "(b m) k -> b m k", b=bs)
+        LPE_1 = rearrange(flat_LPE_node_1, "(b m) k -> b m k", b=bs)
+        LPE_2 = rearrange(flat_LPE_node_2, "(b m) k -> b m k", b=bs)
         
         x_1 = self.atom_encoder(node_1)
         x_2 = self.atom_encoder(node_2)
