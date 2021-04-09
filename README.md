@@ -16,11 +16,10 @@ ogb==1.3.0
 How to run example:
 
 ``
-python train.py --model perceiver --save_file nosave --run_name init_test --batch_size 48 --depth 6
-``
+python train.py --model perceiver --save_file nosave --run_name William_BigModel  --batch_size 84 --depth 5 --num_latents 128 --latent_dim 128 --cross_heads 2 --latent_heads 4 --cross_dim_head 64 --latent_dim_head 64 --attn_dropout 0.2 --ff_dropout 0.2 --batch_size 16 --learning_rate 0.0001 --n_epochs 40``
 
 What each argument does:
-- `depth` is just the number cross-attention followed by self-attention blocks in the Perceiver module.
+- A bunch of the parameters are just model architecture details.
 - `model` specifies that we are using the perceiver model, but this is redundant until we test out multiple models.
 - `run_name` is the name of the run as shown by `wandb`.
 - `device` should always be `0` for `cuda`. We should not be running on CPU, so this argument is redundant.

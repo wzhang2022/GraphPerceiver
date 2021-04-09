@@ -92,6 +92,7 @@ if __name__ == "__main__":
         
         print(f"Model has {count_parameters(model)} parameters")
         optimizer = torch.optim.SGD(model.parameters(), lr=args.learning_rate)
+        scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=args.lr_decay)
         criterion = nn.CrossEntropyLoss(reduction="mean", weight=torch.as_tensor([1232 / 32901, 1]).to(device)) # correct for class imbalance in HIV dataset
         # wandb.watch(model, criterion, log="all", log_freq=1000)
         best_valid_loss = float('inf')
@@ -102,7 +103,7 @@ if __name__ == "__main__":
             train_loss, train_accuracy, train_roc = run_epoch(model, train_loader, optimizer, args.clip, criterion, device, "train")
             val_loss, val_accuracy, val_roc = run_epoch(model, valid_loader, None, None, criterion, device, "val")
             test_loss, test_accuracy, test_roc = run_epoch(model, test_loader, None, None, criterion, device, "test")
-
+            scheduler.step()
             end_time = time.time()
 
             epoch_mins, epoch_secs = epoch_time(start_time, end_time)
