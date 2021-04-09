@@ -123,6 +123,7 @@ class Perceiver(nn.Module):
             *,
             input_dim,
             depth,
+            latent_trnsfmr_depth,
             num_latents=512,
             latent_dim=512,
             cross_heads=1,
@@ -142,13 +143,17 @@ class Perceiver(nn.Module):
                                          Attention(latent_dim, input_dim, heads=cross_heads, dim_head=cross_dim_head,
                                                    dropout=attn_dropout), context_dim=input_dim)
         get_cross_ff = lambda: PreNorm(latent_dim, FeedForward(latent_dim, dropout=ff_dropout))
-        get_latent_attn = lambda: PreNorm(latent_dim,
-                                          Attention(latent_dim, heads=latent_heads, dim_head=latent_dim_head,
-                                                    dropout=attn_dropout))
-        get_latent_ff = lambda: PreNorm(latent_dim, FeedForward(latent_dim, dropout=ff_dropout))
+        get_latent_trnsfmr = lambda: nn.ModuleList([nn.ModuleList([PreNorm(latent_dim,
+                                                                           Attention(latent_dim, heads=latent_heads,
+                                                                                     dim_head=latent_dim_head,
+                                                                                     dropout=attn_dropout)),
+                                                                   PreNorm(latent_dim,
+                                                                           FeedForward(latent_dim, dropout=ff_dropout))]
+                                                                  )
+                                                    for _ in range(latent_trnsfmr_depth)])
 
-        get_cross_attn, get_cross_ff, get_latent_attn, get_latent_ff = map(cache_fn, (
-        get_cross_attn, get_cross_ff, get_latent_attn, get_latent_ff))
+        get_cross_attn, get_cross_ff, get_latent_trnsfmr= map(cache_fn, (
+        get_cross_attn, get_cross_ff, get_latent_trnsfmr))
 
         self.layers = nn.ModuleList([])
         for i in range(depth):
@@ -158,8 +163,7 @@ class Perceiver(nn.Module):
             self.layers.append(nn.ModuleList([
                 get_cross_attn(**cache_args),
                 get_cross_ff(**cache_args),
-                get_latent_attn(**cache_args),
-                get_latent_ff(**cache_args)
+                get_latent_trnsfmr(**cache_args),
             ]))
 
         self.to_logits = nn.Sequential(
@@ -174,11 +178,12 @@ class Perceiver(nn.Module):
 
         x = repeat(self.latents, 'n d -> b n d', b=b)
 
-        for cross_attn, cross_ff, latent_attn, latent_ff in self.layers:
+        for cross_attn, cross_ff, latent_trnsfmr in self.layers:
             x = cross_attn(x, context=data, mask=mask) + x
             x = cross_ff(x) + x
-            x = latent_attn(x) + x
-            x = latent_ff(x) + x
+            for latent_self_attn, latent_ff in latent_trnsfmr:
+                x = latent_self_attn(x) + x
+                x = latent_ff(x) + x
 
         x = x.mean(dim=-2)
         return self.to_logits(x)

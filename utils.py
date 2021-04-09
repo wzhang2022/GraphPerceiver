@@ -43,6 +43,7 @@ def parse_args():
 
     # architectural details
     parser.add_argument("--depth", type=int, default=3)
+    parser.add_argument("--latent_transformer_depth", type=int, default=4)
     parser.add_argument("--num_latents", type=int, default=64)
     parser.add_argument("--latent_dim", type=int, default=128)
     parser.add_argument("--cross_heads", type=int, default=1)

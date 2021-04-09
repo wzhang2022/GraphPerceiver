@@ -84,7 +84,8 @@ if __name__ == "__main__":
     with wandb.init(project="GraphPerceiver", entity="wzhang2022", config=args):
         wandb.run.name = args.run_name
         model = HIVModel(atom_emb_dim=args.atom_emb_dim, bond_emb_dim=args.bond_emb_dim, node_preprocess_dim=args.k_eigs,
-                         p_depth=args.depth, p_num_latents=args.num_latents, p_latent_dim=args.num_latents,
+                         p_depth=args.depth, p_latent_trsnfmr_depth=args.latent_transformer_depth,
+                         p_num_latents=args.num_latents, p_latent_dim=args.num_latents,
                          p_cross_heads=args.cross_heads, p_latent_heads=args.latent_heads,
                          p_cross_dim_head=args.cross_dim_head, p_latent_dim_head=args.latent_dim_head,
                          p_attn_dropout=args.attn_dropout, p_ff_dropout=args.ff_dropout,

@@ -18,6 +18,7 @@ class HIVModelNodeOnly(nn.Module):
         self.perceiver = Perceiver(
             input_dim=atom_emb_dim,
             depth=perceiver_depth,
+            latent_trnsfmr_depth=2,
             num_latents=128,
             latent_dim=256,
             cross_heads=2,
@@ -39,7 +40,7 @@ class HIVModelNodeOnly(nn.Module):
 
 class HIVModel(nn.Module):
     def __init__(self, atom_emb_dim, bond_emb_dim,  node_preprocess_dim,
-                 p_depth, p_num_latents, p_latent_dim, p_cross_heads, p_latent_heads,
+                 p_depth, p_latent_trsnfmr_depth, p_num_latents, p_latent_dim, p_cross_heads, p_latent_heads,
                  p_cross_dim_head, p_latent_dim_head, p_attn_dropout, p_ff_dropout, p_weight_tie_layers):
         super(HIVModel, self).__init__()
         self.atom_encoder = PaddedAtomEncoder(emb_dim=atom_emb_dim)
@@ -47,6 +48,7 @@ class HIVModel(nn.Module):
         self.perceiver = Perceiver(
             input_dim=2 * atom_emb_dim + 2 * node_preprocess_dim + bond_emb_dim,
             depth=p_depth,
+            latent_trnsfmr_depth=p_latent_trsnfmr_depth,
             num_latents=p_num_latents,
             latent_dim=p_latent_dim,
             cross_heads=p_cross_heads,
@@ -82,9 +84,9 @@ class HIVModel(nn.Module):
         x_1 = rearrange(flat_x_1, "(b m) f -> b m f", b=bs)
         x_2 = rearrange(flat_x_2, "(b m) f -> b m f", b=bs)
         x_3 = self.bond_encoder(edge_features)
-        if random.randint(0, 1) == 0:
-            x = torch.cat([x_1, x_2, x_3], dim=2)
-        else:
-            x = torch.cat([x_2, x_1, x_3], dim=2)
+        # if random.randint(0, 1) == 0:
+        x = torch.cat([x_1, x_2, x_3], dim=2)
+        # else:
+        #     x = torch.cat([x_2, x_1, x_3], dim=2)
         x = self.perceiver(x, mask=X_mask[1].to(device))
         return x
