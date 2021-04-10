@@ -192,10 +192,14 @@ def get_LPE_embeddings(n_nodes, edges, k):
         if k > n_nodes:
             zero_vecs = np.zeros(shape=((k-n_nodes), n_nodes))
             eigvecs = np.concatenate((vecs, zero_vecs.T), axis=1)
+            assert eigvecs.shape == (n_nodes, k)
             return eigvecs
         else:
+            assert vecs.shape == (n_nodes, k)
             return vecs
     
-    return eigh(L, eigvals=(n_nodes-k, n_nodes-1))[1]   # eigvals should be deprecated and instead replaced with subset_by_index, but doesn't work
+    eigvecs = eigh(L, eigvals=(n_nodes-k, n_nodes-1))[1]   # eigvals should be deprecated and instead replaced with subset_by_index, but doesn't work
+    assert eigvecs.shape == (n_nodes, k)
+    return eigvecs
 
 
