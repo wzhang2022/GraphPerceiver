@@ -56,9 +56,9 @@ def parse_args():
 
     
     # embedding details
-    parser.add_argument("--atom_emb_dim", type=int, default=50)
-    parser.add_argument("--bond_emb_dim", type=int, default=20)
-    parser.add_argument("--k_eigs", type=int, default=0)      # specifies # of e-vectors to use
+    parser.add_argument("--atom_emb_dim", type=int, required=True)
+    parser.add_argument("--bond_emb_dim", type=int, required=True)
+    parser.add_argument("--k_eigs", type=int, required=True)      # specifies # of e-vectors to use
 
     # training details
     parser.add_argument("--batch_size", type=int, default=64)

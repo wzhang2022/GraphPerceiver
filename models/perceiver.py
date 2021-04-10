@@ -94,6 +94,7 @@ class Attention(nn.Module):
         h = self.heads
 
         q = self.to_q(x)
+
         context = default(context, x)
         k, v = self.to_kv(context).chunk(2, dim=-1)
 
@@ -172,7 +173,7 @@ class Perceiver(nn.Module):
         )
 
     def forward(self, data, mask=None):
-        b, *axis, _, device = *data.shape, data.device
+        b = data.shape[0]
 
         data = rearrange(data, 'b ... d -> b (...) d')
 

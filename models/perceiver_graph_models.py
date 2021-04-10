@@ -84,9 +84,7 @@ class HIVModel(nn.Module):
         x_1 = rearrange(flat_x_1, "(b m) f -> b m f", b=bs)
         x_2 = rearrange(flat_x_2, "(b m) f -> b m f", b=bs)
         x_3 = self.bond_encoder(edge_features)
-        # if random.randint(0, 1) == 0:
         x = torch.cat([x_1, x_2, x_3], dim=2)
-        # else:
-        #     x = torch.cat([x_2, x_1, x_3], dim=2)
+
         x = self.perceiver(x, mask=X_mask[1].to(device))
         return x
