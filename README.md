@@ -16,19 +16,21 @@ ogb==1.3.0
 How to run example:
 
 ``
-python train.py --model perceiver --save_file nosave --run_name William_BigModel  --batch_size 84 --depth 5 --num_latents 128 --latent_dim 128 --cross_heads 2 --latent_heads 4 --cross_dim_head 64 --latent_dim_head 64 --attn_dropout 0.2 --ff_dropout 0.2 --batch_size 16 --learning_rate 0.0001 --n_epochs 40``
+python train.py --model perceiver --save_file nosave --run_name William_BigModel --k_eigs --atom_emb_dim --bond_emb_dim  --batch_size 84 --depth 5 --num_latents 128 --latent_dim 128 --cross_heads 2 --latent_heads 4 --cross_dim_head 64 --latent_dim_head 64 --attn_dropout 0.2 --ff_dropout 0.2 --batch_size 16 --learning_rate 0.0001 --n_epochs 40``
 
 What each argument does:
 - A bunch of the parameters are just model architecture details.
 - `model` specifies that we are using the perceiver model, but this is redundant until we test out multiple models.
 - `run_name` is the name of the run as shown by `wandb`.
+- `k_eigs` specifies how many eigenvectors to use for Laplacian positional encodings. If 0, it forgoes using LPEs.
+- `atom_emb_dim`, `bond_emb_dim` specifies the dimensions for the atom feature and bond feature embeddings.
 - `device` should always be `0` for `cuda`. We should not be running on CPU, so this argument is redundant.
 - `save_file` specifies where to save the weights of the best model, as measured by validation loss.
 - `n_epochs`, `batch_size`, `learning_rate`, and `clip` should all be self-explanatory.
 
 TODO:
 - Set up code to run an extensive hyperparameter search.
-- Implement Laplacian Eigenvector positional encodings, as in [https://arxiv.org/pdf/2012.09699.pdf][here].
+- Implement Laplacian Eigenvector positional encodings, as in [https://arxiv.org/pdf/2012.09699.pdf][here] (DONE).
 - Maybe there is a better way of encoding graphs than just a set of edges?
 - Run until we observe memorization of training data and deep double descent.
 This [https://arxiv.org/pdf/2002.08709.pdf][a] might be an interesting regularizer to investigate?
