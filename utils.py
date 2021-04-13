@@ -184,20 +184,21 @@ def get_LPE_embeddings(n_nodes, edges, k):
     for j in range(len(A[0])):
         L[j,j] += 1                                   # adding I
     
-    # returns eigenvectors only (no values)    
-    if k >= n_nodes:
-        vecs = np.linalg.eigh(L)[1]
-        if k > n_nodes:
-            zero_vecs = np.zeros(shape=((k-n_nodes), n_nodes))
-            eigvecs = np.concatenate((vecs, zero_vecs.T), axis=1)
-            assert eigvecs.shape == (n_nodes, k)
-            return eigvecs
-        else:
-            assert vecs.shape == (n_nodes, k)
-            return vecs
+    # eigh returns evalues [0] and evectors [1] in ascending order 
+    vecs = np.linalg.eigh(L)[1]
     
-    eigvecs = (np.linalg.eigh(L)[1])[:, n_nodes-k:]       # k columns corresponding to greatest eigenvalues   
-    assert eigvecs.shape == (n_nodes, k)
-    return eigvecs
+    if k > n_nodes:
+        zero_vecs = np.zeros(shape=((k-n_nodes), n_nodes))
+        eigvecs = np.concatenate((zero_vecs.T, vecs), axis=1)    # pad with 0 vectors
+        assert eigvecs.shape == (n_nodes, k)
+        return eigvecs
+    
+    elif k == n_nodes:
+        assert vecs.shape == (n_nodes, k)
+        return vecs
+    else:
+        eigvecs = vecs[:, n_nodes-k:]            # k columns corresponding to greatest eigenvalues   
+        assert eigvecs.shape == (n_nodes, k)
+        return eigvecs
 
 
