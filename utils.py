@@ -7,8 +7,6 @@ import sys
 import random
 import numpy as np
 
-from scipy.linalg import eigh
-
 from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data import Dataset
 from ogb.utils.features import get_atom_feature_dims, get_bond_feature_dims
@@ -150,7 +148,7 @@ class LPE(object):
         
     def __call__(self, data_sample):
         dictionary = data_sample[0]
-        arr = data_sample[1]
+        y = data_sample[1]
         
         # keys: ['edge_index', 'edge_feat', 'node_feat', 'num_nodes']
         positional_embeddings = get_LPE_embeddings(dictionary['num_nodes'], dictionary['edge_index'], self.k)
@@ -161,7 +159,7 @@ class LPE(object):
                           'num_nodes': dictionary['num_nodes'],
                           'node_preprocess_feat': positional_embeddings}
         
-        return (new_dictionary, arr)
+        return (new_dictionary, y)
     
 
 def get_LPE_embeddings(n_nodes, edges, k):
@@ -176,7 +174,7 @@ def get_LPE_embeddings(n_nodes, edges, k):
     
     D_sqrinv = np.zeros(shape=(n_nodes, n_nodes))    # initialize D^{-1/2}
     for j in range(len(A[0])):
-        deg = sum(A[j])
+        deg = sum(A[j])                              # this is nonpositive
         if deg == 0:
             D_sqrinv[j,j] = 0
         else:
@@ -186,20 +184,21 @@ def get_LPE_embeddings(n_nodes, edges, k):
     for j in range(len(A[0])):
         L[j,j] += 1                                   # adding I
     
-    # returns eigenvectors only (no values)    
-    if k >= n_nodes:
-        vecs = eigh(L)[1]
-        if k > n_nodes:
-            zero_vecs = np.zeros(shape=((k-n_nodes), n_nodes))
-            eigvecs = np.concatenate((vecs, zero_vecs.T), axis=1)
-            assert eigvecs.shape == (n_nodes, k)
-            return eigvecs
-        else:
-            assert vecs.shape == (n_nodes, k)
-            return vecs
+    # eigh returns evalues [0] and evectors [1] in ascending order 
+    vecs = np.linalg.eigh(L)[1]
     
-    eigvecs = eigh(L, eigvals=(n_nodes-k, n_nodes-1))[1]   # eigvals should be deprecated and instead replaced with subset_by_index, but doesn't work
-    assert eigvecs.shape == (n_nodes, k)
-    return eigvecs
+    if k > n_nodes:
+        zero_vecs = np.zeros(shape=((k-n_nodes), n_nodes))
+        eigvecs = np.concatenate((zero_vecs.T, vecs), axis=1)    # pad with 0 vectors
+        assert eigvecs.shape == (n_nodes, k)
+        return eigvecs
+    
+    elif k == n_nodes:
+        assert vecs.shape == (n_nodes, k)
+        return vecs
+    else:
+        eigvecs = vecs[:, n_nodes-k:]            # k columns corresponding to greatest eigenvalues   
+        assert eigvecs.shape == (n_nodes, k)
+        return eigvecs
 
 
