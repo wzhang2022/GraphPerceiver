@@ -8,8 +8,8 @@ from ogb.graphproppred import GraphPropPredDataset
 from ogb.graphproppred import Evaluator
 
 
-from utils import parse_args, hiv_graph_collate, count_parameters, LPE, GraphDataset
-from models.perceiver_graph_models import HIVModel, HIVModelNodeOnly
+from utils import parse_args, hiv_graph_collate, count_parameters, LPE, GraphDataset, make_model
+from models.perceiver_graph_models import HIVPerceiverModel, HIVModelNodeOnly
 
 
 evaluator = Evaluator(name="ogbg-molhiv")
@@ -83,13 +83,7 @@ if __name__ == "__main__":
 
     with wandb.init(project="GraphPerceiver", entity="wzhang2022", config=args):
         wandb.run.name = args.run_name
-        model = HIVModel(atom_emb_dim=args.atom_emb_dim, bond_emb_dim=args.bond_emb_dim, node_preprocess_dim=args.k_eigs,
-                         p_depth=args.depth, p_latent_trsnfmr_depth=args.latent_transformer_depth,
-                         p_num_latents=args.num_latents, p_latent_dim=args.latent_dim,
-                         p_cross_heads=args.cross_heads, p_latent_heads=args.latent_heads,
-                         p_cross_dim_head=args.cross_dim_head, p_latent_dim_head=args.latent_dim_head,
-                         p_attn_dropout=args.attn_dropout, p_ff_dropout=args.ff_dropout,
-                         p_weight_tie_layers=args.weight_tie_layers).to(device)
+        model = make_model(args).to(device)
         
         print(f"Model has {count_parameters(model)} parameters")
         
