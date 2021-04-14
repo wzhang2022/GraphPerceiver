@@ -92,11 +92,44 @@ if __name__ == "__main__":
                          p_weight_tie_layers=args.weight_tie_layers).to(device)
         
         print(f"Model has {count_parameters(model)} parameters")
+        
+        # build optmizer and scheduler
         optimizer = torch.optim.SGD(model.parameters(), lr=args.learning_rate)
-        scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=args.lr_decay)
+        gamma = args.lr_decay
+        scheduler_type = args.scheduler
+        
+        if scheduler_type == 'exponential':
+            scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma)
+            
+        elif scheduler_type == 'multistep':
+            default_milestones = [84, 102, 114]       # for non-regular milestones, hardcode ahead of time
+            
+            m_freq = args.milestone_frequency
+            m_start = args.milestone_start
+            m_end = args.milestone_end
+            
+            # activate default_milestones when m_freq = 0
+            if m_freq < 1:
+                milestones = default_milestones
+            else:
+                assert m_end >= m_start
+                milestones = list(range(m_start, min(args.n_epochs, m_end+1), m_freq))        # [m_start, m_start+m_freq, ...]
+            scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones, gamma)
+            
+        elif scheduler_type == 'plateau':
+            scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=gamma, patience=5)
+            # TODO: choose parameters for threshold, epsilon, min_lr, and cooldown
+            # these parameters are more relevant when we see more stability in end-game training loss
+            
+        else:
+            raise Exception("Invalid scheduler provided")
+        
+        # criterion/loss
         criterion = nn.CrossEntropyLoss(reduction="mean", weight=torch.as_tensor([1232 / 32901, 1]).to(device)) # correct for class imbalance in HIV dataset
         # wandb.watch(model, criterion, log="all", log_freq=1000)
         best_valid_loss = float('inf')
+        
+        # begin training
         for epoch in range(args.n_epochs):
 
             start_time = time.time()
@@ -104,9 +137,10 @@ if __name__ == "__main__":
             train_loss, train_accuracy, train_roc = run_epoch(model, train_loader, optimizer, args.clip, criterion, device, "train")
             val_loss, val_accuracy, val_roc = run_epoch(model, valid_loader, None, None, criterion, device, "val")
             test_loss, test_accuracy, test_roc = run_epoch(model, test_loader, None, None, criterion, device, "test")
+            
             scheduler.step()
+            
             end_time = time.time()
-
             epoch_mins, epoch_secs = epoch_time(start_time, end_time)
 
             if val_loss < best_valid_loss:
