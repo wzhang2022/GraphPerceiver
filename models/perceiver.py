@@ -60,13 +60,14 @@ class GEGLU(nn.Module):
 
 
 class FeedForward(nn.Module):
-    def __init__(self, dim, mult=4, dropout=0.):
+    def __init__(self, dim, hid_dim=None, dropout=0.):
         super().__init__()
+        hid_dim = default(hid_dim, 4 * dim)
         self.net = nn.Sequential(
-            nn.Linear(dim, dim * mult * 2),
+            nn.Linear(dim, hid_dim * 2),
             GEGLU(),
             nn.Dropout(dropout),
-            nn.Linear(dim * mult, dim)
+            nn.Linear(hid_dim, dim)
         )
 
     def forward(self, x):
@@ -81,6 +82,8 @@ class Attention(nn.Module):
 
         self.scale = dim_head ** -0.5
         self.heads = heads
+        self.query_dim = query_dim
+        self.context_dim = context_dim
 
         self.to_q = nn.Linear(query_dim, inner_dim, bias=False)
         self.to_kv = nn.Linear(context_dim, inner_dim * 2, bias=False)
@@ -90,23 +93,27 @@ class Attention(nn.Module):
             nn.Dropout(dropout)
         )
 
-    def forward(self, x, context=None, mask=None):
+    def forward(self, x, context=None, mask=None, mask_kv_only=True):
         h = self.heads
-
         q = self.to_q(x)
-
         context = default(context, x)
+        bs, num_q, _ = x.shape
+        _, num_kv, _ = context.shape
+
         k, v = self.to_kv(context).chunk(2, dim=-1)
 
         q, k, v = map(lambda t: rearrange(t, 'b n (h d) -> (b h) n d', h=h), (q, k, v))
 
         sim = einsum('b i d, b j d -> b i j', q, k) * self.scale
 
-        if exists(mask):
-            mask = rearrange(mask, 'b ... -> b (...)')
-            max_neg_value = -torch.finfo(sim.dtype).max
+        if exists(mask) and mask_kv_only:
+            assert mask.shape == (bs, num_kv)
             mask = repeat(mask, 'b j -> (b h) () j', h=h)
-            sim.masked_fill_(~mask, max_neg_value)
+            sim.masked_fill_(~mask, -torch.finfo(sim.dtype).max)
+        elif exists(mask) and (not mask_kv_only):
+            assert mask.shape == (bs, num_q, num_kv)
+            mask = repeat(mask, 'b i j -> (b h) i j', h=h)
+            sim.masked_fill_(~mask, -torch.finfo(sim.dtype).max)
 
         # attention, what we cannot get enough of
         attn = sim.softmax(dim=-1)
@@ -115,6 +122,29 @@ class Attention(nn.Module):
         out = rearrange(out, '(b h) n d -> b n (h d)', h=h)
         return self.to_out(out)
 
+
+class TransformerEncoder(nn.Module):
+    def __init__(self, query_dim, n_layers, n_heads, head_dim, pf_dim, attn_dropout, ff_dropout):
+        super(TransformerEncoder, self).__init__()
+        self.query_dim = query_dim
+        self.attn_dropout = nn.Dropout(attn_dropout)
+        self.layers = nn.ModuleList([
+            nn.ModuleList([
+                PreNorm(query_dim, Attention(query_dim, heads=n_heads, dim_head=head_dim, dropout=attn_dropout)),
+                PreNorm(query_dim, FeedForward(query_dim, hid_dim=pf_dim, dropout=ff_dropout))
+            ]) for _ in range(n_layers)
+        ])
+
+    def forward(self, data, mask):
+        bs, num_tokens, _ = data.shape
+        x = data
+
+        # convert mask from shape (bs, num_tokens) to (bs, num_tokens, num_tokens)
+        mask = torch.einsum("bi,bj->bij", mask, mask)
+        for self_attn, positionwise_ff in self.layers:
+            x = self_attn(x, mask=mask, mask_kv_only=False) + x
+            x = positionwise_ff(x) + x
+        return x
 
 # main class
 

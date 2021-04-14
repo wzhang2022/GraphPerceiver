@@ -11,6 +11,7 @@ from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data import Dataset
 from ogb.utils.features import get_atom_feature_dims, get_bond_feature_dims
 
+from models.perceiver_graph_models import HIVPerceiverModel, HIVTransformerEncoderModel
 # set random seeds
 SEED = 1234
 
@@ -210,3 +211,22 @@ def get_LPE_embeddings(n_nodes, edges, k):
         return eigvecs
 
 
+def make_model(args):
+    if args.model == "perceiver":
+        return HIVPerceiverModel(atom_emb_dim=args.atom_emb_dim, bond_emb_dim=args.bond_emb_dim,
+                                 node_preprocess_dim=args.k_eigs,
+                                 p_depth=args.depth, p_latent_trsnfmr_depth=args.latent_transformer_depth,
+                                 p_num_latents=args.num_latents, p_latent_dim=args.latent_dim,
+                                 p_cross_heads=args.cross_heads, p_latent_heads=args.latent_heads,
+                                 p_cross_dim_head=args.cross_dim_head, p_latent_dim_head=args.latent_dim_head,
+                                 p_attn_dropout=args.attn_dropout, p_ff_dropout=args.ff_dropout,
+                                 p_weight_tie_layers=args.weight_tie_layers)
+    elif args.model == "transformer":
+        return HIVTransformerEncoderModel(atom_emb_dim=args.atom_emb_dim, bond_emb_dim=args.bond_emb_dim,
+                                          node_preprocess_dim=args.k_eigs,
+                                          n_layers=args.latent_transformer_depth, n_heads=args.latent_heads,
+                                          head_dim=args.latent_dim_head, pf_dim=None,
+                                          attn_dropout=args.attn_dropout, ff_dropout=args.ff_dropout
+                                          )
+    else:
+        raise Exception("invalid model type")
