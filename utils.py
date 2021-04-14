@@ -66,6 +66,7 @@ def parse_args():
     parser.add_argument("--scheduler", type=str, default='exponential')    # 'exponential', 'multistep', 'plateau'
     parser.add_argument("--milestone_frequency", type=int, default=10)     # how far apart the milestones are
     parser.add_argument("--milestone_start", type=int, default=1)          # first epoch in the milestones array
+    parser.add_argument("--milestone_end", type=int, default=1)            # last epoch in the milestones array
     parser.add_argument("--clip", type=float, default=1)
 
     # data details

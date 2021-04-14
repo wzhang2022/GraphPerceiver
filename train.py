@@ -106,12 +106,14 @@ if __name__ == "__main__":
             
             m_freq = args.milestone_frequency
             m_start = args.milestone_start
+            m_end = args.milestone_end
             
             # activate default_milestones when m_freq = 0
             if m_freq < 1:
                 milestones = default_milestones
             else:
-                milestones = list(range(m_start, args.n_epochs, m_freq))        # [m_start, m_start+m_freq, ...]
+                assert m_end >= m_start
+                milestones = list(range(m_start, min(args.n_epochs, m_end+1), m_freq))        # [m_start, m_start+m_freq, ...]
             scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones, gamma)
             
         elif scheduler_type == 'plateau':
