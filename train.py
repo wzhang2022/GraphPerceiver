@@ -105,6 +105,9 @@ if __name__ == "__main__":
         elif optimizer_type == 'AdamW':
             beta_tuple = (args.Adam_beta_1, args.Adam_beta_2)
             optimizer = torch.optim.AdamW(model.parameters(), lr=args.learning_rate, betas=beta_tuple, weight_decay=args.Adam_weight_decay)
+        elif optimizer_type == 'AMSGrad':
+            beta_tuple = (args.Adam_beta_1, args.Adam_beta_2)
+            optimizer = torch.optim.AdamW(model.parameters(), lr=args.learning_rate, betas=beta_tuple, weight_decay=args.Adam_weight_decay, amsgrad=True)
         else:
             Exception("Invalid optimizer provided")
         

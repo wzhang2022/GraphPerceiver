@@ -68,7 +68,7 @@ def parse_args():
     parser.add_argument("--milestone_start", type=int, default=1)          # first epoch in the milestones array
     parser.add_argument("--milestone_end", type=int, default=1)            # last epoch in the milestones array
     parser.add_argument("--clip", type=float, default=1)
-    parser.add_argument("--optimizer", type=str, default='SGD')            # 'SGD', 'Adam', 'Adam', LAMB'
+    parser.add_argument("--optimizer", type=str, default='SGD')            # 'SGD', 'Adam', 'AdamW', 'AMSGrad', LAMB'
     parser.add_argument("--Adam_weight_decay", type=float, default=0.0)
     parser.add_argument("--Adam_beta_1", type=float, default=0.9)
     parser.add_argument("--Adam_beta_2", type=float, default=0.999)
