@@ -62,12 +62,16 @@ def parse_args():
     parser.add_argument("--batch_size", type=int, default=64)
     parser.add_argument("--n_epochs", type=int, default=20)
     parser.add_argument("--learning_rate", type=float, default=0.0005)
-    parser.add_argument("--lr_decay", type=float, default=1)               # gamma, i.e. lr * gamma when scheduler.step() is called
+    parser.add_argument("--lr_decay", type=float, default=1.0)               # gamma, i.e. lr * gamma when scheduler.step() is called
     parser.add_argument("--scheduler", type=str, default='exponential')    # 'exponential', 'multistep', 'plateau'
     parser.add_argument("--milestone_frequency", type=int, default=10)     # how far apart the milestones are
     parser.add_argument("--milestone_start", type=int, default=1)          # first epoch in the milestones array
     parser.add_argument("--milestone_end", type=int, default=1)            # last epoch in the milestones array
     parser.add_argument("--clip", type=float, default=1)
+    parser.add_argument("--optimizer", type=str, default='SGD')            # 'SGD', 'Adam', 'LAMB'
+    parser.add_argument("--Adam_weight_decay", type=float, default=0.0)
+    parser.add_argument("--Adam_beta_1", type=float, default=0.9)
+    parser.add_argument("--Adam_beta_2", type=float, default=0.999)
 
     # data details
     return parser.parse_args()

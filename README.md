@@ -25,7 +25,8 @@ What each argument does:
 - `atom_emb_dim`, `bond_emb_dim` specifies the dimensions for the atom feature and bond feature embeddings.
 - `device` should always be `0` for `cuda`. We should not be running on CPU, so this argument is redundant.
 - `save_file` specifies where to save the weights of the best model, as measured by validation loss.
-- `learning_rate` is self-explanatory. `lr_decay` is the gamma/factor. `scheduler` can be "exponential", "multistep", or "plateau".
+- `learning_rate` is self-explanatory. `lr_decay` is the gamma/factor. 
+- `optimizer` can be "SGD", "Adam", or "AdamW". `scheduler` can be "exponential", "multistep", or "plateau".
 - `milestone_frequency`, `milestone_start`, `milestone_end` determine scheduler milestones, i.e. \[start, start+freq, start+2freq...\]
 - `n_epochs`, `batch_size`, `clip` should all be self-explanatory.
 
