@@ -94,10 +94,24 @@ if __name__ == "__main__":
         print(f"Model has {count_parameters(model)} parameters")
         
         # build optmizer and scheduler
-        optimizer = torch.optim.SGD(model.parameters(), lr=args.learning_rate)
-        gamma = args.lr_decay
+        optimizer_type = args.optimizer
         scheduler_type = args.scheduler
         
+        if optimizer_type == 'SGD':
+            optimizer = torch.optim.SGD(model.parameters(), lr=args.learning_rate)
+        elif optimizer_type == 'Adam':
+            beta_tuple = (args.Adam_beta_1, args.Adam_beta_2)
+            optimizer = torch.optim.Adam(model.parameters(), lr=args.learning_rate, betas=beta_tuple, weight_decay=args.Adam_weight_decay)
+        elif optimizer_type == 'AdamW':
+            beta_tuple = (args.Adam_beta_1, args.Adam_beta_2)
+            optimizer = torch.optim.AdamW(model.parameters(), lr=args.learning_rate, betas=beta_tuple, weight_decay=args.Adam_weight_decay)
+        elif optimizer_type == 'AMSGrad':
+            beta_tuple = (args.Adam_beta_1, args.Adam_beta_2)
+            optimizer = torch.optim.AdamW(model.parameters(), lr=args.learning_rate, betas=beta_tuple, weight_decay=args.Adam_weight_decay, amsgrad=True)
+        else:
+            Exception("Invalid optimizer provided")
+        
+        gamma = args.lr_decay                            # not the same as Adam_weight_decay; when Adam_weight_decay > 0 we should use ExponentialLR(., 1)
         if scheduler_type == 'exponential':
             scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma)
             
