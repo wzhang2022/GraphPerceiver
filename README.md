@@ -26,16 +26,23 @@ What each argument does:
 - `device` should always be `0` for `cuda`. We should not be running on CPU, so this argument is redundant.
 - `save_file` specifies where to save the weights of the best model, as measured by validation loss.
 - `learning_rate` is self-explanatory. `lr_decay` is the gamma/factor. `scheduler` can be "exponential", "multistep", or "plateau".
-- `milestone_frequency` and `milestone_start` determine scheduler milestones, i.e. start, start+freq, start+2freq...
+- `milestone_frequency` and `milestone_start` determine scheduler milestones, i.e. \[start, start+freq, start+2freq...\]
 - `n_epochs`, `batch_size`, `clip` should all be self-explanatory.
 
-TODO:
-- Set up code to run an extensive hyperparameter search.
-- Implement Laplacian Eigenvector positional encodings, as in [https://arxiv.org/pdf/2012.09699.pdf][here] (DONE).
+TODO (in order of importance):
 - Implement the LAMB optimizer, which the Perceiver paper chooses over regular SGD. Paper: [https://arxiv.org/pdf/1904.00962.pdf][here]. Implementation:  [https://github.com/cybertronai/pytorch-lamb][here].
-- Maybe there is a better way of encoding graphs than just a set of edges?
 - Run until we observe memorization of training data and deep double descent.
+- Maybe there is a better way of encoding graphs than just a set of edges?
 - This [https://arxiv.org/pdf/2002.08709.pdf][a] might be an interesting regularizer to investigate?
+- Set up code to run an extensive hyperparameter search.
+
+DONE:
+
+- Implement Laplacian Eigenvector positional encodings, as in [https://arxiv.org/pdf/2012.09699.pdf][here] 
+
+
+
+
 
 Guidelines for good collaboration:
 - Include your name in the `run_name` so that we know who is responsible for each run.
