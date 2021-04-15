@@ -127,7 +127,9 @@ if __name__ == "__main__":
                        "test_accuracy": test_accuracy, "val_accuracy": val_accuracy, "train_accuracy": train_accuracy,
                        f"test_{metric}": test_eval_metric, f"val_{metric}": val_eval_metric,
                        f"train_{metric}": train_eval_metric})
+            
+            # print metrics after every epoch
             print(f'Epoch: {epoch + 1:02} | Time: {epoch_mins}m {epoch_secs}s')
-            print(f'\t Train Loss: {train_loss:.3f}, Train {metric}: {train_eval_metric:.3f}')
-            print(f'\t Val. Loss: {val_loss:.3f}, Val {metric}: {val_eval_metric:.3f}')
-            print(f'\t Test Loss: {test_loss:.3f}, Test {metric} {test_eval_metric:.3f}')
+            print(f'\t Train Loss: {train_loss:.3f}\tTrain {metric}: {train_eval_metric:.3f}')
+            print(f'\t Val. Loss: {val_loss:.3f} \tVal {metric}: {val_eval_metric:.3f}')
+            print(f'\t Test Loss: {test_loss:.3f} \tTest {metric} {test_eval_metric:.3f}')
