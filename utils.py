@@ -7,6 +7,7 @@ import sys
 import random
 import numpy as np
 
+import torch.nn as nn
 from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data import Dataset
 from ogb.utils.features import get_atom_feature_dims, get_bond_feature_dims
@@ -73,6 +74,7 @@ def parse_args():
     parser.add_argument("--Adam_weight_decay", type=float, default=0.0)
     parser.add_argument("--Adam_beta_1", type=float, default=0.9)
     parser.add_argument("--Adam_beta_2", type=float, default=0.999)
+    parser.add_argument("--criterion", type=str, default="weighted_ce")     # weighted_ce, unweighted_ce, soft_auc
 
     # data details
     return parser.parse_args()
@@ -230,3 +232,34 @@ def make_model(args):
                                           )
     else:
         raise Exception("invalid model type")
+
+
+class SoftAUC(nn.Module):
+    def __init__(self):
+        super(SoftAUC, self).__init__()
+
+    def forward(self, logits, labels):
+        bs, _ = logits.shape
+        assert labels.shape == (bs,)
+        num_pos = labels.sum(dtype=int).item()
+        if num_pos == 0 or num_pos == bs:
+            return logits.mean() * 0
+        else:
+            pos_indices = torch.nonzero(labels, as_tuple=True)[0]
+            neg_indices = torch.nonzero(~labels, as_tuple=True)[0]
+            scores = logits[:, 1] - logits[:, 0]
+            soft_indicators = scores[pos_indices].unsqueeze(0) - scores[neg_indices].unsqueeze(1)
+            soft_auc = torch.sigmoid(soft_indicators).mean()
+            return 1-soft_auc
+
+
+
+def make_criterion(args):
+    if args.criterion == "weighted_ce":
+        return nn.CrossEntropyLoss(reduction="mean", weight=torch.as_tensor([1232 / 32901, 1]))
+    elif args.criterion == "unweighted_ce":
+        return nn.CrossEntropyLoss()
+    elif args.criterion == "soft_auc":
+        return SoftAUC()
+    else:
+        raise Exception("Invalid training criterion")

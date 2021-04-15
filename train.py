@@ -8,7 +8,7 @@ from ogb.graphproppred import GraphPropPredDataset
 from ogb.graphproppred import Evaluator
 
 
-from utils import parse_args, hiv_graph_collate, count_parameters, LPE, GraphDataset, make_model
+from utils import parse_args, hiv_graph_collate, count_parameters, LPE, GraphDataset, make_model, make_criterion
 from models.perceiver_graph_models import HIVPerceiverModel, HIVModelNodeOnly
 
 
@@ -133,7 +133,7 @@ if __name__ == "__main__":
             raise Exception("Invalid scheduler provided")
         
         # criterion/loss
-        criterion = nn.CrossEntropyLoss(reduction="mean", weight=torch.as_tensor([1232 / 32901, 1]).to(device)) # correct for class imbalance in HIV dataset
+        criterion = make_criterion(args).to(device)
         # wandb.watch(model, criterion, log="all", log_freq=1000)
         best_valid_loss = float('inf')
         
