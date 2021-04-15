@@ -70,11 +70,17 @@ def parse_args():
     parser.add_argument("--milestone_start", type=int, default=1)          # first epoch in the milestones array
     parser.add_argument("--milestone_end", type=int, default=1)            # last epoch in the milestones array
     parser.add_argument("--clip", type=float, default=1)
+
     parser.add_argument("--optimizer", type=str, default='SGD')            # 'SGD', 'Adam', 'AdamW', 'AMSGrad', LAMB'
     parser.add_argument("--Adam_weight_decay", type=float, default=0.0)
     parser.add_argument("--Adam_beta_1", type=float, default=0.9)
     parser.add_argument("--Adam_beta_2", type=float, default=0.999)
-    parser.add_argument("--criterion", type=str, default="weighted_ce")     # weighted_ce, unweighted_ce, soft_auc
+
+    parser.add_argument("--criterion", type=str, default="ce")              # ce, soft_auc, combined_ce_auc
+    parser.add_argument("--ce_weighted", dest="ce_weighted", action="store_true")
+    parser.add_argument("--ce_unweighted", dest="ce_weighted", action="store_false")
+    parser.set_defaults(ce_weighted=True)
+    parser.add_argument("--auc_weight", type=float, default=1.0)
 
     # data details
     return parser.parse_args()
@@ -253,13 +259,26 @@ class SoftAUC(nn.Module):
             return 1-soft_auc
 
 
+class CombinedCEandAUCLoss(nn.Module):
+    def __init__(self, ce_weighted=True, auc_weight=1.0):
+        super(CombinedCEandAUCLoss, self).__init__()
+        self.auc_weight = auc_weight
+        ce_weight = torch.as_tensor([1232 / 32901, 1]) if ce_weighted else None
+        self.ce_loss = nn.CrossEntropyLoss(reduction="mean", weight=ce_weight)
+        self.softauc_loss = SoftAUC()
+
+    def forward(self, logits, labels):
+        return self.ce_loss(logits, labels) + self.auc_weight * self.softauc_loss(logits, labels)
+
 
 def make_criterion(args):
     if args.criterion == "weighted_ce":
         return nn.CrossEntropyLoss(reduction="mean", weight=torch.as_tensor([1232 / 32901, 1]))
     elif args.criterion == "unweighted_ce":
-        return nn.CrossEntropyLoss()
+        return nn.CrossEntropyLoss(reduce="mean")
     elif args.criterion == "soft_auc":
         return SoftAUC()
+    elif args.criterion == "combined_ce_auc":
+        return CombinedCEandAUCLoss(ce_weighted=args.ce_weighted, auc_weight=args.auc_weight)
     else:
         raise Exception("Invalid training criterion")
