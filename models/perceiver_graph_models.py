@@ -35,7 +35,6 @@ class HIVModelNodeOnly(nn.Module):
             latent_heads=8,
             cross_dim_head=8,
             latent_dim_head=8,
-            num_classes=2,
             attn_dropout=0.,
             ff_dropout=0.,
             weight_tie_layers=False
@@ -65,11 +64,16 @@ class HIVPerceiverModel(nn.Module):
             latent_heads=p_latent_heads,
             cross_dim_head=p_cross_dim_head,
             latent_dim_head=p_latent_dim_head,
-            num_classes=2,
             attn_dropout=p_attn_dropout,
             ff_dropout=p_ff_dropout,
             weight_tie_layers=p_weight_tie_layers
         )
+
+        self.to_logits = nn.Sequential(
+            nn.LayerNorm(p_latent_dim),
+            nn.Linear(p_latent_dim, 2)
+        )
+
 
     def forward(self, batch_X, X_mask, device):
         """
@@ -86,7 +90,8 @@ class HIVPerceiverModel(nn.Module):
         x = torch.cat([x_1, x_2, x_3], dim=2)
 
         x = self.perceiver(x, mask=X_mask[1].to(device))
-        return x
+        x = x.mean(dim=-2)
+        return self.to_logits(x)
 
 
 class HIVTransformerEncoderModel(nn.Module):

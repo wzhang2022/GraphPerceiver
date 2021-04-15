@@ -161,7 +161,6 @@ class Perceiver(nn.Module):
             latent_heads=8,
             cross_dim_head=64,
             latent_dim_head=64,
-            num_classes=1000,
             attn_dropout=0.,
             ff_dropout=0.,
             weight_tie_layers=False
@@ -174,14 +173,12 @@ class Perceiver(nn.Module):
                                          Attention(latent_dim, input_dim, heads=cross_heads, dim_head=cross_dim_head,
                                                    dropout=attn_dropout), context_dim=input_dim)
         get_cross_ff = lambda: PreNorm(latent_dim, FeedForward(latent_dim, dropout=ff_dropout))
-        get_latent_trnsfmr = lambda: nn.ModuleList([nn.ModuleList([PreNorm(latent_dim,
-                                                                           Attention(latent_dim, heads=latent_heads,
-                                                                                     dim_head=latent_dim_head,
-                                                                                     dropout=attn_dropout)),
-                                                                   PreNorm(latent_dim,
-                                                                           FeedForward(latent_dim, dropout=ff_dropout))]
-                                                                  )
-                                                    for _ in range(latent_trnsfmr_depth)])
+        get_latent_trnsfmr = lambda: nn.ModuleList([
+            nn.ModuleList([
+                PreNorm(latent_dim,
+                        Attention(latent_dim, heads=latent_heads, dim_head=latent_dim_head, dropout=attn_dropout)),
+                PreNorm(latent_dim, FeedForward(latent_dim, dropout=ff_dropout))])
+            for _ in range(latent_trnsfmr_depth)])
 
         get_cross_attn, get_cross_ff, get_latent_trnsfmr= map(cache_fn, (
         get_cross_attn, get_cross_ff, get_latent_trnsfmr))
@@ -197,11 +194,6 @@ class Perceiver(nn.Module):
                 get_latent_trnsfmr(**cache_args),
             ]))
 
-        self.to_logits = nn.Sequential(
-            nn.LayerNorm(latent_dim),
-            nn.Linear(latent_dim, num_classes)
-        )
-
     def forward(self, data, mask=None):
         b = data.shape[0]
 
@@ -216,5 +208,4 @@ class Perceiver(nn.Module):
                 x = latent_self_attn(x) + x
                 x = latent_ff(x) + x
 
-        x = x.mean(dim=-2)
-        return self.to_logits(x)
+        return x
