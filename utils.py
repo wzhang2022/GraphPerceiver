@@ -11,6 +11,7 @@ import torch.nn as nn
 from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data import Dataset
 from ogb.utils.features import get_atom_feature_dims, get_bond_feature_dims
+from pytorch_lamb import Lamb
 
 from models.perceiver_graph_models import HIVPerceiverModel, HIVTransformerEncoderModel
 # set random seeds
@@ -282,3 +283,59 @@ def make_criterion(args):
         return CombinedCEandAUCLoss(ce_weighted=args.ce_weighted, auc_weight=args.auc_weight)
     else:
         raise Exception("Invalid training criterion")
+
+
+def make_optimizer(args, model):
+    optimizer_type = args.optimizer
+
+    if optimizer_type == 'SGD':
+        return torch.optim.SGD(model.parameters(), lr=args.learning_rate)
+    elif optimizer_type == 'Adam':
+        beta_tuple = (args.Adam_beta_1, args.Adam_beta_2)
+        return torch.optim.Adam(model.parameters(), lr=args.learning_rate, betas=beta_tuple,
+                                     weight_decay=args.Adam_weight_decay)
+    elif optimizer_type == 'AdamW':
+        beta_tuple = (args.Adam_beta_1, args.Adam_beta_2)
+        return torch.optim.AdamW(model.parameters(), lr=args.learning_rate, betas=beta_tuple,
+                                      weight_decay=args.Adam_weight_decay)
+    elif optimizer_type == 'AMSGrad':
+        beta_tuple = (args.Adam_beta_1, args.Adam_beta_2)
+        return torch.optim.AdamW(model.parameters(), lr=args.learning_rate, betas=beta_tuple,
+                                      weight_decay=args.Adam_weight_decay, amsgrad=True)
+    elif optimizer_type == 'LAMB':
+        beta_tuple = (args.Adam_beta_1, args.Adam_beta_2)
+        return Lamb(model.parameters(), lr=args.learning_rate, betas=beta_tuple,
+                         weight_decay=args.Adam_weight_decay, )
+    else:
+        raise Exception("Invalid optimizer provided")
+
+
+def make_scheduler(args, optimizer):
+    scheduler_type = args.scheduler
+
+    gamma = args.lr_decay  # not the same as Adam_weight_decay; when Adam_weight_decay > 0 we should use ExponentialLR(., 1)
+    if scheduler_type == 'exponential':
+        return torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma)
+
+    elif scheduler_type == 'multistep':
+        default_milestones = [84, 102, 114]  # for non-regular milestones, hardcode ahead of time
+
+        m_freq = args.milestone_frequency
+        m_start = args.milestone_start
+        m_end = args.milestone_end
+
+        # activate default_milestones when m_freq = 0
+        if m_freq < 1:
+            milestones = default_milestones
+        else:
+            assert m_end >= m_start
+            milestones = list(range(m_start, min(args.n_epochs, m_end + 1), m_freq))  # [m_start, m_start+m_freq, ...]
+        return torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones, gamma)
+
+    elif scheduler_type == 'plateau':
+        return torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=gamma, patience=5)
+        # TODO: choose parameters for threshold, epsilon, min_lr, and cooldown
+        # these parameters are more relevant when we see more stability in end-game training loss
+
+    else:
+        raise Exception("Invalid scheduler provided")

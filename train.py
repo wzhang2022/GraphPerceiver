@@ -6,11 +6,11 @@ import time
 
 from ogb.graphproppred import GraphPropPredDataset
 from ogb.graphproppred import Evaluator
-from pytorch_lamb import Lamb
 
 
-from utils import parse_args, hiv_graph_collate, count_parameters, LPE, GraphDataset, make_model, make_criterion
-from models.perceiver_graph_models import HIVPerceiverModel, HIVModelNodeOnly
+
+from utils import parse_args, hiv_graph_collate, count_parameters, LPE, GraphDataset, make_model, make_criterion, \
+    make_optimizer, make_scheduler
 
 
 evaluator = Evaluator(name="ogbg-molhiv")
@@ -64,7 +64,6 @@ def epoch_time(start_time, end_time):
     return elapsed_mins, elapsed_secs
 
 
-
 if __name__ == "__main__":
     args = parse_args()
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -81,62 +80,14 @@ if __name__ == "__main__":
     valid_loader = DataLoader(valid_data, batch_size=args.batch_size, shuffle=True, collate_fn=hiv_graph_collate)
     test_loader = DataLoader(test_data, batch_size=args.batch_size, shuffle=True, collate_fn=hiv_graph_collate)
 
-
     with wandb.init(project="GraphPerceiver", entity="wzhang2022", config=args):
         wandb.run.name = args.run_name
         model = make_model(args).to(device)
         
         print(f"Model has {count_parameters(model)} parameters")
-        
-        # build optmizer and scheduler
-        optimizer_type = args.optimizer
-        scheduler_type = args.scheduler
-        
-        if optimizer_type == 'SGD':
-            optimizer = torch.optim.SGD(model.parameters(), lr=args.learning_rate)
-        elif optimizer_type == 'Adam':
-            beta_tuple = (args.Adam_beta_1, args.Adam_beta_2)
-            optimizer = torch.optim.Adam(model.parameters(), lr=args.learning_rate, betas=beta_tuple, weight_decay=args.Adam_weight_decay)
-        elif optimizer_type == 'AdamW':
-            beta_tuple = (args.Adam_beta_1, args.Adam_beta_2)
-            optimizer = torch.optim.AdamW(model.parameters(), lr=args.learning_rate, betas=beta_tuple, weight_decay=args.Adam_weight_decay)
-        elif optimizer_type == 'AMSGrad':
-            beta_tuple = (args.Adam_beta_1, args.Adam_beta_2)
-            optimizer = torch.optim.AdamW(model.parameters(), lr=args.learning_rate, betas=beta_tuple, weight_decay=args.Adam_weight_decay, amsgrad=True)
-        elif optimizer_type == 'LAMB':
-            beta_tuple = (args.Adam_beta_1, args.Adam_beta_2)
-            optimizer = Lamb(model.parameters(), lr=args.learning_rate, betas=beta_tuple, weight_decay=args.Adam_weight_decay, )
-        else:
-            Exception("Invalid optimizer provided")
-        
-        gamma = args.lr_decay                            # not the same as Adam_weight_decay; when Adam_weight_decay > 0 we should use ExponentialLR(., 1)
-        if scheduler_type == 'exponential':
-            scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma)
-            
-        elif scheduler_type == 'multistep':
-            default_milestones = [84, 102, 114]       # for non-regular milestones, hardcode ahead of time
-            
-            m_freq = args.milestone_frequency
-            m_start = args.milestone_start
-            m_end = args.milestone_end
-            
-            # activate default_milestones when m_freq = 0
-            if m_freq < 1:
-                milestones = default_milestones
-            else:
-                assert m_end >= m_start
-                milestones = list(range(m_start, min(args.n_epochs, m_end+1), m_freq))        # [m_start, m_start+m_freq, ...]
-            scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones, gamma)
-            
-        elif scheduler_type == 'plateau':
-            scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=gamma, patience=5)
-            # TODO: choose parameters for threshold, epsilon, min_lr, and cooldown
-            # these parameters are more relevant when we see more stability in end-game training loss
-            
-        else:
-            raise Exception("Invalid scheduler provided")
-        
-        # criterion/loss
+
+        optimizer = make_optimizer(args, model)
+        scheduler = make_scheduler(args, optimizer)
         criterion = make_criterion(args).to(device)
         # wandb.watch(model, criterion, log="all", log_freq=1000)
         best_valid_loss = float('inf')
