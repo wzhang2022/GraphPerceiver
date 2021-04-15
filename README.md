@@ -29,9 +29,9 @@ What each argument does:
 - `optimizer` can be "SGD", "Adam", "AdamW", or "AMSGrad". `scheduler` can be "exponential", "multistep", or "plateau".
 - `milestone_frequency`, `milestone_start`, `milestone_end` determine scheduler milestones, i.e. \[start, start+freq, start+2freq...\]
 - `n_epochs`, `batch_size`, `clip` should all be self-explanatory.
+- `Adam_weight_decay`, `Adam_beta_1`, `Adam_beta_2` are specific parameters for the Adam and LAMB optimizers; this decay factor is separate from `lr_decay`.
 
 TODO (in order of importance):
-- Implement the LAMB optimizer, which the Perceiver paper chooses over regular SGD. Paper: [https://arxiv.org/pdf/1904.00962.pdf][here]. Implementation:  [https://github.com/cybertronai/pytorch-lamb][here].
 - Run until we observe memorization of training data and deep double descent.
 - Maybe there is a better way of encoding graphs than just a set of edges?
 - This [https://arxiv.org/pdf/2002.08709.pdf][a] might be an interesting regularizer to investigate?
@@ -40,6 +40,7 @@ TODO (in order of importance):
 DONE:
 
 - Implement Laplacian Eigenvector positional encodings, as in [https://arxiv.org/pdf/2012.09699.pdf][here] 
+- Implement the LAMB optimizer, which the Perceiver paper chooses over regular SGD. Paper: [https://arxiv.org/pdf/1904.00962.pdf][here]. Implementation:  [https://github.com/cybertronai/pytorch-lamb][here].
 
 
 

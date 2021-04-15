@@ -6,6 +6,7 @@ import time
 
 from ogb.graphproppred import GraphPropPredDataset
 from ogb.graphproppred import Evaluator
+from pytorch_lamb import Lamb
 
 
 from utils import parse_args, hiv_graph_collate, count_parameters, LPE, GraphDataset, make_model, make_criterion
@@ -102,6 +103,9 @@ if __name__ == "__main__":
         elif optimizer_type == 'AMSGrad':
             beta_tuple = (args.Adam_beta_1, args.Adam_beta_2)
             optimizer = torch.optim.AdamW(model.parameters(), lr=args.learning_rate, betas=beta_tuple, weight_decay=args.Adam_weight_decay, amsgrad=True)
+        elif optimizer_type == 'LAMB':
+            beta_tuple = (args.Adam_beta_1, args.Adam_beta_2)
+            optimizer = Lamb(model.parameters(), lr=args.learning_rate, betas=beta_tuple, weight_decay=args.Adam_weight_decay, )
         else:
             Exception("Invalid optimizer provided")
         

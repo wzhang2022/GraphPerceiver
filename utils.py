@@ -72,9 +72,9 @@ def parse_args():
     parser.add_argument("--clip", type=float, default=1)
 
     parser.add_argument("--optimizer", type=str, default='SGD')            # 'SGD', 'Adam', 'AdamW', 'AMSGrad', LAMB'
-    parser.add_argument("--Adam_weight_decay", type=float, default=0.0)
-    parser.add_argument("--Adam_beta_1", type=float, default=0.9)
-    parser.add_argument("--Adam_beta_2", type=float, default=0.999)
+    parser.add_argument("--Adam_weight_decay", type=float, default=0.0)     # used for Adam and LAMB
+    parser.add_argument("--Adam_beta_1", type=float, default=0.9)           # used for Adam and LAMB
+    parser.add_argument("--Adam_beta_2", type=float, default=0.999)         # used for Adam and LAMB
 
     parser.add_argument("--criterion", type=str, default="ce")              # ce, soft_auc, combined_ce_auc
     parser.add_argument("--ce_weighted", dest="ce_weighted", action="store_true")
