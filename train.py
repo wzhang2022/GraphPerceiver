@@ -112,7 +112,9 @@ if __name__ == "__main__":
 
             wandb.log({"test_loss": test_loss, "val_loss": val_loss, "train_loss": train_loss,
                        "test_accuracy": test_accuracy, "val_accuracy": val_accuracy, "train_accuracy": train_accuracy,
-                       "test_roc": test_roc, "val_roc": val_roc, "test_roc": test_roc})
+                       "train_roc": train_roc, "val_roc": val_roc, "test_roc": test_roc})
+            
             print(f'Epoch: {epoch + 1:02} | Time: {epoch_mins}m {epoch_secs}s')
-            print(f'\tTrain Loss: {train_loss:.3f}, Train ROC: {train_roc:.3f}')
-            print(f'\t Val. Loss: {val_loss:.3f}, Val. ROC: {val_roc:.3f}, Test ROC: {test_roc:.3f}')
+            print(f'\tTrain Loss: {train_loss:.3f},\tTrain ROC: {train_roc:.3f}')
+            print(f'\tVal. Loss: {val_loss:.3f},\tVal. ROC: {val_roc:.3f}')
+            print(f'\tTest Loss: {test_loss:.3f},\tTest ROC: {test_roc:.3f}')
