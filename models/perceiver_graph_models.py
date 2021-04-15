@@ -114,9 +114,10 @@ class HIVTransformerEncoderModel(nn.Module):
         node_features, node_preprocess_feat, edge_index, edge_features = [X.to(device) for X in batch_X]
         node_encodings = torch.cat([self.atom_encoder(node_features), node_preprocess_feat], dim=2)
 
+        edge_mask = X_mask[1].to(device) # shape: (bs, num_edges)
         x_1, x_2 = get_node_feature_pairs(edge_index, node_encodings, device)
         x_3 = self.bond_encoder(edge_features)
         x = torch.cat([x_1, x_2, x_3], dim=2)
-        x = self.transformer_encoder(x, mask=X_mask[1].to(device))
-        x = x.mean(dim=-2)
+        x = self.transformer_encoder(x, mask=edge_mask)
+        x = (x * edge_mask.unsqueeze(2)).sum(dim=1) / (edge_mask.sum(dim=1).unsqueeze(1) ** 0.5)
         return self.to_logits(x)
