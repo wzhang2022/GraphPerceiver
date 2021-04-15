@@ -75,6 +75,9 @@ if __name__ == "__main__":
     args = parse_args()
     assert args.dataset in ['molhiv', 'molpcba']
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    
+    # preprocessing: start
+    pp_start_time = time.time()
 
     dataset = GraphPropPredDataset(name=f"ogbg-{args.dataset}", root='dataset/')
     evaluator = Evaluator(name=f"ogbg-{args.dataset}")
@@ -89,12 +92,17 @@ if __name__ == "__main__":
     train_loader = DataLoader(train_data, batch_size=args.batch_size, shuffle=True, collate_fn=collate_fn)
     valid_loader = DataLoader(valid_data, batch_size=args.batch_size, shuffle=True, collate_fn=collate_fn)
     test_loader = DataLoader(test_data, batch_size=args.batch_size, shuffle=True, collate_fn=collate_fn)
-
+    
+    pp_end_time = time.time()
+    pp_mins, pp_secs = epoch_time(pp_start_time, pp_end_time)
+    print(f'Preprocessing time: {pp_mins}m {pp_secs}s')
+    
     with wandb.init(project="GraphPerceiver", entity="wzhang2022", config=args):
         wandb.run.name = args.run_name
         model = make_model(args).to(device)
         
         print(f"Model has {count_parameters(model)} parameters")
+        print()
 
         optimizer = make_optimizer(args, model)
         scheduler = make_scheduler(args, optimizer)
