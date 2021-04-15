@@ -50,10 +50,14 @@ class HIVModelNodeOnly(nn.Module):
 class HIVPerceiverModel(nn.Module):
     def __init__(self, atom_emb_dim, bond_emb_dim,  node_preprocess_dim,
                  p_depth, p_latent_trsnfmr_depth, p_num_latents, p_latent_dim, p_cross_heads, p_latent_heads,
-                 p_cross_dim_head, p_latent_dim_head, p_attn_dropout, p_ff_dropout, p_weight_tie_layers):
+                 p_cross_dim_head, p_latent_dim_head, p_attn_dropout, p_ff_dropout, p_weight_tie_layers,
+                 p_node_edge_cross_attn):
         super(HIVPerceiverModel, self).__init__()
         self.atom_encoder = PaddedAtomEncoder(emb_dim=atom_emb_dim)
         self.bond_encoder = PaddedBondEncoder(emb_dim=bond_emb_dim)
+        self.latent_atom_encode = PaddedAtomEncoder(emb_dim=p_latent_dim)
+        self.latent_dim = p_latent_dim
+        self.node_edge_cross_attn = p_node_edge_cross_attn
         self.perceiver = Perceiver(
             input_dim=2 * atom_emb_dim + 2 * node_preprocess_dim + bond_emb_dim,
             depth=p_depth,
@@ -74,7 +78,6 @@ class HIVPerceiverModel(nn.Module):
             nn.Linear(p_latent_dim, 2)
         )
 
-
     def forward(self, batch_X, X_mask, device):
         """
         :param batch_X: (bs, num_nodes, num_node_feat), (bs, num_nodes, num_node_preprocess_feat),
@@ -89,7 +92,13 @@ class HIVPerceiverModel(nn.Module):
         x_3 = self.bond_encoder(edge_features)
         x = torch.cat([x_1, x_2, x_3], dim=2)
 
-        x = self.perceiver(x, mask=X_mask[1].to(device))
+        if self.node_edge_cross_attn:
+            latent_node_feat = self.latent_atom_encode(node_features)
+            x = self.perceiver(x, mask=X_mask[1].to(device), latent_input=latent_node_feat)
+            x = x[:, :self.latent_dim, :]
+        else:
+            x = self.perceiver(x, mask=X_mask[1].to(device))
+
         x = x.mean(dim=-2)
         return self.to_logits(x)
 

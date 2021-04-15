@@ -194,12 +194,14 @@ class Perceiver(nn.Module):
                 get_latent_trnsfmr(**cache_args),
             ]))
 
-    def forward(self, data, mask=None):
+    def forward(self, data, mask=None, latent_input=None):
         b = data.shape[0]
 
         data = rearrange(data, 'b ... d -> b (...) d')
 
         x = repeat(self.latents, 'n d -> b n d', b=b)
+        if exists(latent_input):
+            x = torch.cat([x, latent_input], dim=1)
 
         for cross_attn, cross_ff, latent_trnsfmr in self.layers:
             x = cross_attn(x, context=data, mask=mask) + x

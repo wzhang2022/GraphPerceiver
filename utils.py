@@ -56,6 +56,7 @@ def parse_args():
     parser.add_argument("--attn_dropout", type=float, default=0.0)
     parser.add_argument("--ff_dropout", type=float, default=0.0)
     parser.add_argument("--weight_tie_layers", type=bool, default=False)
+    parser.add_argument("--node_edge_cross_attn", type=bool,default=False)
 
     # embedding details
     parser.add_argument("--atom_emb_dim", type=int, required=True)
@@ -239,7 +240,8 @@ def make_model(args):
                                  p_cross_heads=args.cross_heads, p_latent_heads=args.latent_heads,
                                  p_cross_dim_head=args.cross_dim_head, p_latent_dim_head=args.latent_dim_head,
                                  p_attn_dropout=args.attn_dropout, p_ff_dropout=args.ff_dropout,
-                                 p_weight_tie_layers=args.weight_tie_layers)
+                                 p_weight_tie_layers=args.weight_tie_layers,
+                                 p_node_edge_cross_attn=args.node_edge_cross_attn)
     elif args.model == "perceiver" and args.dataset == "molpcba":
         return PCBAPerceiverModel(atom_emb_dim=args.atom_emb_dim, bond_emb_dim=args.bond_emb_dim,
                                   node_preprocess_dim=args.k_eigs,
