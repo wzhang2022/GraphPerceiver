@@ -48,6 +48,7 @@ def run_epoch(model, iterator, optimizer, clip, criterion, device, evaluator, mo
             evaluator_dict['y_pred'] += (output[:, 1] - output[:, 0]).tolist()
         elif evaluator.name == "ogbg-molpcba":
             # TODO: implement accuracy accumulation for molpcba dataset
+            accuracy = -1  * num_samples                         # while not implemented return negative number so we know      
             evaluator_dict['y_true'] += batch_y.tolist()
             evaluator_dict['y_pred'] += output.tolist()
         # log progress for viewing during training/testing
