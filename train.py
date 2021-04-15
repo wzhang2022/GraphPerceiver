@@ -3,20 +3,16 @@ import torch
 import torch.nn as nn
 import wandb
 import time
+from functools import partial
 
 from ogb.graphproppred import GraphPropPredDataset
 from ogb.graphproppred import Evaluator
 
-
-
-from utils import parse_args, hiv_graph_collate, count_parameters, LPE, GraphDataset, make_model, make_criterion, \
+from utils import parse_args, mol_graph_collate, count_parameters, LPE, GraphDataset, make_model, make_criterion, \
     make_optimizer, make_scheduler
 
 
-evaluator = Evaluator(name="ogbg-molhiv")
-
-
-def run_epoch(model, iterator, optimizer, clip, criterion, device, mode="train"):
+def run_epoch(model, iterator, optimizer, clip, criterion, device, evaluator, mode="train"):
     if mode == "train":
         model.train()
         optimizer.zero_grad()
@@ -44,17 +40,27 @@ def run_epoch(model, iterator, optimizer, clip, criterion, device, mode="train")
             optimizer.zero_grad()
 
         # record metrics
-        accuracy += sum(batch_y.to(device) == torch.argmax(output, dim=1))
         epoch_loss += loss.item() * len(batch_y)
         num_samples += len(batch_y)
-        evaluator_dict['y_true'] += batch_y.tolist()
-        evaluator_dict['y_pred'] += (output[:, 1] - output[:, 0]).tolist()
+        if evaluator.name == "ogbg-molhiv":
+            accuracy += sum(batch_y.to(device) == torch.argmax(output, dim=1))
+            evaluator_dict['y_true'] += batch_y.tolist()
+            evaluator_dict['y_pred'] += (output[:, 1] - output[:, 0]).tolist()
+        elif evaluator.name == "ogbg-molpcba":
+            # TODO: implement accuracy accumulation for molpcba dataset
+            evaluator_dict['y_true'] += batch_y.tolist()
+            evaluator_dict['y_pred'] += output.tolist()
+        # log progress for viewing during training/testing
         if i % 100 == 99:
             print(f"Finished batch {i + 1} in mode {mode}")
 
-    evaluator_dict['y_true'] = torch.as_tensor(evaluator_dict['y_true']).unsqueeze(-1)
-    evaluator_dict['y_pred'] = torch.as_tensor(evaluator_dict['y_pred']).unsqueeze(-1)
-    return epoch_loss / num_samples, accuracy / num_samples, evaluator.eval(evaluator_dict)['rocauc']
+    if evaluator.name == "ogbg-molhiv":
+        evaluator_dict['y_true'] = torch.as_tensor(evaluator_dict['y_true']).unsqueeze(-1)
+        evaluator_dict['y_pred'] = torch.as_tensor(evaluator_dict['y_pred']).unsqueeze(-1)
+    elif evaluator.name == "ogbg-molpcba":
+        evaluator_dict['y_true'] = torch.as_tensor(evaluator_dict['y_true'])
+        evaluator_dict['y_pred'] = torch.as_tensor(evaluator_dict['y_pred'])
+    return epoch_loss / num_samples, accuracy / num_samples, evaluator.eval(evaluator_dict)[evaluator.eval_metric]
 
 
 def epoch_time(start_time, end_time):
@@ -66,9 +72,11 @@ def epoch_time(start_time, end_time):
 
 if __name__ == "__main__":
     args = parse_args()
+    assert args.dataset in ['molhiv', 'molpcba']
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-    dataset = GraphPropPredDataset(name="ogbg-molhiv", root='dataset/')
+    dataset = GraphPropPredDataset(name=f"ogbg-{args.dataset}", root='dataset/')
+    evaluator = Evaluator(name=f"ogbg-{args.dataset}")
     split_idx = dataset.get_idx_split()
 
     graph_preprocess_fns = [LPE(args.k_eigs)] if args.k_eigs > 0 else []
@@ -76,9 +84,10 @@ if __name__ == "__main__":
     valid_data = GraphDataset([dataset[i] for i in split_idx["valid"]], preprocess=graph_preprocess_fns)
     test_data = GraphDataset([dataset[i] for i in split_idx["test"]], preprocess=graph_preprocess_fns)
 
-    train_loader = DataLoader(train_data, batch_size=args.batch_size, shuffle=True, collate_fn=hiv_graph_collate)
-    valid_loader = DataLoader(valid_data, batch_size=args.batch_size, shuffle=True, collate_fn=hiv_graph_collate)
-    test_loader = DataLoader(test_data, batch_size=args.batch_size, shuffle=True, collate_fn=hiv_graph_collate)
+    collate_fn = partial(mol_graph_collate, dataset_name=args.dataset)
+    train_loader = DataLoader(train_data, batch_size=args.batch_size, shuffle=True, collate_fn=collate_fn)
+    valid_loader = DataLoader(valid_data, batch_size=args.batch_size, shuffle=True, collate_fn=collate_fn)
+    test_loader = DataLoader(test_data, batch_size=args.batch_size, shuffle=True, collate_fn=collate_fn)
 
     with wandb.init(project="GraphPerceiver", entity="wzhang2022", config=args):
         wandb.run.name = args.run_name
@@ -97,9 +106,12 @@ if __name__ == "__main__":
 
             start_time = time.time()
 
-            train_loss, train_accuracy, train_roc = run_epoch(model, train_loader, optimizer, args.clip, criterion, device, "train")
-            val_loss, val_accuracy, val_roc = run_epoch(model, valid_loader, None, None, criterion, device, "val")
-            test_loss, test_accuracy, test_roc = run_epoch(model, test_loader, None, None, criterion, device, "test")
+            train_loss, train_accuracy, train_eval_metric = run_epoch(model, train_loader, optimizer, args.clip, criterion,
+                                                              device, evaluator, "train")
+            val_loss, val_accuracy, val_eval_metric = run_epoch(model, valid_loader, None, None, criterion,
+                                                        device, evaluator, "val")
+            test_loss, test_accuracy, test_eval_metric = run_epoch(model, test_loader, None, None, criterion,
+                                                           device, evaluator, "test")
             
             scheduler.step()
             
@@ -110,9 +122,12 @@ if __name__ == "__main__":
                 best_valid_loss = val_loss
                 torch.save(model.state_dict(), f"{args.save_file}.pt")
 
+            metric = evaluator.eval_metric
             wandb.log({"test_loss": test_loss, "val_loss": val_loss, "train_loss": train_loss,
                        "test_accuracy": test_accuracy, "val_accuracy": val_accuracy, "train_accuracy": train_accuracy,
-                       "test_roc": test_roc, "val_roc": val_roc, "train_roc": train_roc})
+                       f"test_{metric}": test_eval_metric, f"val_{metric}": val_eval_metric,
+                       f"train_{metric}": train_eval_metric})
             print(f'Epoch: {epoch + 1:02} | Time: {epoch_mins}m {epoch_secs}s')
-            print(f'\tTrain Loss: {train_loss:.3f}, Train ROC: {train_roc:.3f}')
-            print(f'\t Val. Loss: {val_loss:.3f}, Val. ROC: {val_roc:.3f}, Test ROC: {test_roc:.3f}')
+            print(f'\t Train Loss: {train_loss:.3f}, Train {metric}: {train_eval_metric:.3f}')
+            print(f'\t Val. Loss: {val_loss:.3f}, Val {metric}: {val_eval_metric:.3f}')
+            print(f'\t Test Loss: {test_loss:.3f}, Test {metric} {test_eval_metric:.3f}')
