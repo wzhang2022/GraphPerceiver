@@ -1,6 +1,6 @@
 from torch.utils.data import DataLoader
 import torch
-import torch.nn as nn
+import numpy as np
 import wandb
 import time
 from functools import partial
@@ -81,7 +81,13 @@ if __name__ == "__main__":
 
     dataset = GraphPropPredDataset(name=f"ogbg-{args.dataset}", root='dataset/')
     evaluator = Evaluator(name=f"ogbg-{args.dataset}")
-    split_idx = dataset.get_idx_split()
+    if args.shuffle_split:
+        indices = np.random.permutation(len(dataset))
+        idx1, idx2 = int(len(dataset) * 0.8), int(len(dataset) * 0.9)
+        train, valid, test = indices[:idx1], indices[idx1:idx2], indices[idx2:]
+        split_idx = {"train": train, "valid": valid, "test": test}
+    else:
+        split_idx = dataset.get_idx_split()
 
     graph_preprocess_fns = [LPE(args.k_eigs)] if args.k_eigs > 0 else []
     train_data = GraphDataset([dataset[i] for i in split_idx["train"]], preprocess=graph_preprocess_fns)

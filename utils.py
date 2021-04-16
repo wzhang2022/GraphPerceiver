@@ -43,6 +43,8 @@ def parse_args():
     parser.add_argument("--run_name", required=True)
     parser.add_argument("--device", type=str, default="cuda")
     parser.add_argument("--dataset", type=str, required=True)  # molhiv, molpcba
+    parser.add_argument("--shuffle_split", dest="shuffle_split", action="store_true")
+    parser.set_defaults(shuffle_split=False)
 
     # architectural details
     parser.add_argument("--depth", type=int, default=3)
