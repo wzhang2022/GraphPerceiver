@@ -4,6 +4,7 @@ import numpy as np
 import wandb
 import time
 from functools import partial
+import random
 
 from ogb.graphproppred import GraphPropPredDataset
 from ogb.graphproppred import Evaluator
@@ -73,6 +74,17 @@ def epoch_time(start_time, end_time):
 
 if __name__ == "__main__":
     args = parse_args()
+
+    # set random seeds
+    SEED = args.seed
+
+    random.seed(SEED)
+    np.random.seed(SEED)
+    torch.manual_seed(SEED)
+    torch.cuda.manual_seed(SEED)
+    torch.backends.cudnn.deterministic = True
+
+
     assert args.dataset in ['molhiv', 'molpcba']
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     

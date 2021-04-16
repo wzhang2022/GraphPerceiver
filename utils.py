@@ -16,15 +16,6 @@ from pytorch_lamb import Lamb
 from models.perceiver_graph_models import HIVPerceiverModel, HIVTransformerEncoderModel, PCBAPerceiverModel
 from models.loss_functions import CombinedCEandAUCLoss, SoftAUC, MultitaskCrossEntropyLoss
 
-# set random seeds
-SEED = 1234
-
-random.seed(SEED)
-np.random.seed(SEED)
-torch.manual_seed(SEED)
-torch.cuda.manual_seed(SEED)
-torch.backends.cudnn.deterministic = True
-
 
 def warn_with_traceback(message, category, filename, lineno, file=None, line=None):
     log = file if hasattr(file, 'write') else sys.stderr
@@ -45,6 +36,7 @@ def parse_args():
     parser.add_argument("--dataset", type=str, required=True)  # molhiv, molpcba
     parser.add_argument("--shuffle_split", dest="shuffle_split", action="store_true")
     parser.set_defaults(shuffle_split=False)
+    parser.add_argument("--seed", type=int, default=1234)
 
     # architectural details
     parser.add_argument("--depth", type=int, default=3)
