@@ -49,10 +49,10 @@ class NystromAttention(nn.Module):
         kv_mask = mask.any(dim=1)       # shape (bs, num_kv)
 
         # pad number of input tokens if not divisible
-        assert x.shape[1] % self.num_landmarks== 0
+        assert x.shape[1] % self.num_landmarks == 0
         assert context.shape[1] % self.num_landmarks == 0
-        q = self.to_q(x) * self.scale * q_mask.unsqueeze(2)
-        k, v = (self.to_kv(context) * self.scale * kv_mask.unsqueeze(2)).chunk(2, dim=-1)
+        q = self.to_q(x) * (self.scale ** 0.5) * q_mask.unsqueeze(2)
+        k, v = (self.to_kv(context) * (self.scale ** 0.5) * kv_mask.unsqueeze(2)).chunk(2, dim=-1)
         h = self.heads
         q, k, v = map(lambda t: rearrange(t, 'b n (h d) -> (b h) n d', h=h), (q, k, v))          # compute for each head
         q_landmarks, k_landmarks = map(lambda t: reduce(t, 'b (l n) d -> b l d', "mean", l=self.num_landmarks), (q, k))
@@ -69,7 +69,7 @@ class NystromAttention(nn.Module):
 
         return self.to_out(x)
 
-    def iterative_inv(self, mat, n_iter=6):
+    def iterative_inv(self, mat, n_iter=8):
         """
 
         :param mat: tensor of shape (bs, l, l)

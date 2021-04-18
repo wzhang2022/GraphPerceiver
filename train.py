@@ -94,11 +94,13 @@ if __name__ == "__main__":
     dataset = GraphPropPredDataset(name=f"ogbg-{args.dataset}", root='dataset/')
     evaluator = Evaluator(name=f"ogbg-{args.dataset}")
     if args.shuffle_split:
+        print("Shuffled data split")
         indices = np.random.permutation(len(dataset))
         idx1, idx2 = int(len(dataset) * 0.8), int(len(dataset) * 0.9)
         train, valid, test = indices[:idx1], indices[idx1:idx2], indices[idx2:]
         split_idx = {"train": train, "valid": valid, "test": test}
     else:
+        print("Original data split")
         split_idx = dataset.get_idx_split()
 
     graph_preprocess_fns = [LPE(args.k_eigs)] if args.k_eigs > 0 else []
