@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 from models.perceiver import Perceiver, TransformerEncoder
+from models.nystromformer import Nystromformer
 from models.padded_mol_encoder import PaddedAtomEncoder, PaddedBondEncoder
 from einops import rearrange
 
@@ -47,12 +48,12 @@ class HIVModelNodeOnly(nn.Module):
         return x
 
 
-class HIVPerceiverModel(nn.Module):
+class MoleculePerceiverModel(nn.Module):
     def __init__(self, atom_emb_dim, bond_emb_dim,  node_preprocess_dim,
                  p_depth, p_latent_trsnfmr_depth, p_num_latents, p_latent_dim, p_cross_heads, p_latent_heads,
                  p_cross_dim_head, p_latent_dim_head, p_attn_dropout, p_ff_dropout, p_weight_tie_layers,
-                 p_node_edge_cross_attn):
-        super(HIVPerceiverModel, self).__init__()
+                 p_node_edge_cross_attn, p_num_outputs):
+        super(MoleculePerceiverModel, self).__init__()
         self.atom_encoder = PaddedAtomEncoder(emb_dim=atom_emb_dim)
         self.bond_encoder = PaddedBondEncoder(emb_dim=bond_emb_dim)
         self.latent_atom_encode = PaddedAtomEncoder(emb_dim=p_latent_dim)
@@ -75,7 +76,7 @@ class HIVPerceiverModel(nn.Module):
 
         self.to_logits = nn.Sequential(
             nn.LayerNorm(p_latent_dim),
-            nn.Linear(p_latent_dim, 2)
+            nn.Linear(p_latent_dim, p_num_outputs)
         )
 
     def forward(self, batch_X, X_mask, device):
@@ -103,25 +104,72 @@ class HIVPerceiverModel(nn.Module):
         return self.to_logits(x)
 
 
-class HIVTransformerEncoderModel(nn.Module):
+class HIVDomainAdapter(nn.Module):
+    def __init__(self, encoder, discriminator, classifier):
+        super(HIVDomainAdapter, self).__init__()
+        self.encoder = encoder
+        self.discriminator = discriminator
+        self.classifier = classifier
+
+    def forward(self, *args):
+        """
+        :param batch_X: (bs, num_nodes, num_node_feat), (bs, num_nodes, num_node_preprocess_feat),
+                        (bs, num_edges, 2), (bs, num_edges, num_edge_feat)
+        :param X_mask: (bs, num_nodes), (bs, num_edges)
+        :param device: cuda or cpu
+        """
+        encoded_X = self.encoder(*args)
+        node_features, node_preprocess_feat, edge_index, edge_features = [X.to(device) for X in batch_X]
+        node_encodings = torch.cat([self.atom_encoder(node_features), node_preprocess_feat], dim=2)
+
+        x_1, x_2 = get_node_feature_pairs(edge_index, node_encodings, device)
+        x_3 = self.bond_encoder(edge_features)
+        x = torch.cat([x_1, x_2, x_3], dim=2)
+
+        if self.node_edge_cross_attn:
+            latent_node_feat = self.latent_atom_encode(node_features)
+            x = self.perceiver(x, mask=X_mask[1].to(device), latent_input=latent_node_feat)
+            x = x[:, :self.latent_dim, :]
+        else:
+            x = self.perceiver(x, mask=X_mask[1].to(device))
+
+        x = x.mean(dim=-2)
+        return self.to_logits(x)
+
+
+class MoleculeTransformerEncoderModel(nn.Module):
     def __init__(self, atom_emb_dim, bond_emb_dim,  node_preprocess_dim,
-                 n_layers, n_heads, head_dim, pf_dim, attn_dropout, ff_dropout):
-        super(HIVTransformerEncoderModel, self).__init__()
+                 n_layers, n_heads, head_dim, pf_dim, attn_dropout, ff_dropout, num_outputs,
+                 nystrom=False, n_landmarks=32):
+        super(MoleculeTransformerEncoderModel, self).__init__()
         self.atom_encoder = PaddedAtomEncoder(emb_dim=atom_emb_dim)
         self.bond_encoder = PaddedBondEncoder(emb_dim=bond_emb_dim)
         query_dim = 2 * atom_emb_dim + 2 * node_preprocess_dim + bond_emb_dim
-        self.transformer_encoder = TransformerEncoder(
-            query_dim=query_dim,
-            n_layers=n_layers,
-            n_heads=n_heads,
-            head_dim=head_dim,
-            pf_dim=pf_dim,
-            attn_dropout=attn_dropout,
-            ff_dropout=ff_dropout
-        )
+        if nystrom:
+            self.transformer_encoder = Nystromformer(
+                query_dim=query_dim,
+                n_layers=n_layers,
+                n_heads=n_heads,
+                n_landmarks=n_landmarks,
+                head_dim=head_dim,
+                pf_dim=pf_dim,
+                attn_dropout=attn_dropout,
+                ff_dropout=ff_dropout,
+            )
+        else:
+            self.transformer_encoder = TransformerEncoder(
+                query_dim=query_dim,
+                n_layers=n_layers,
+                n_heads=n_heads,
+                head_dim=head_dim,
+                pf_dim=pf_dim,
+                attn_dropout=attn_dropout,
+                ff_dropout=ff_dropout
+            )
+
         self.to_logits = nn.Sequential(
             nn.LayerNorm(query_dim),
-            nn.Linear(query_dim, 2)
+            nn.Linear(query_dim, num_outputs)
         )
 
     def forward(self, batch_X, X_mask, device):
@@ -133,52 +181,5 @@ class HIVTransformerEncoderModel(nn.Module):
         x_3 = self.bond_encoder(edge_features)
         x = torch.cat([x_1, x_2, x_3], dim=2)
         x = self.transformer_encoder(x, mask=edge_mask)
-        x = (x * edge_mask.unsqueeze(2)).sum(dim=1) / (edge_mask.sum(dim=1).unsqueeze(1) ** 0.5)
-        return self.to_logits(x)
-
-
-class PCBAPerceiverModel(nn.Module):
-    def __init__(self, atom_emb_dim, bond_emb_dim,  node_preprocess_dim,
-                 p_depth, p_latent_trsnfmr_depth, p_num_latents, p_latent_dim, p_cross_heads, p_latent_heads,
-                 p_cross_dim_head, p_latent_dim_head, p_attn_dropout, p_ff_dropout, p_weight_tie_layers):
-        super(PCBAPerceiverModel, self).__init__()
-        self.atom_encoder = PaddedAtomEncoder(emb_dim=atom_emb_dim)
-        self.bond_encoder = PaddedBondEncoder(emb_dim=bond_emb_dim)
-        self.perceiver = Perceiver(
-            input_dim=2 * atom_emb_dim + 2 * node_preprocess_dim + bond_emb_dim,
-            depth=p_depth,
-            latent_trnsfmr_depth=p_latent_trsnfmr_depth,
-            num_latents=p_num_latents,
-            latent_dim=p_latent_dim,
-            cross_heads=p_cross_heads,
-            latent_heads=p_latent_heads,
-            cross_dim_head=p_cross_dim_head,
-            latent_dim_head=p_latent_dim_head,
-            attn_dropout=p_attn_dropout,
-            ff_dropout=p_ff_dropout,
-            weight_tie_layers=p_weight_tie_layers
-        )
-
-        self.to_logits = nn.Sequential(
-            nn.LayerNorm(p_latent_dim),
-            nn.Linear(p_latent_dim, 128)
-        )
-
-
-    def forward(self, batch_X, X_mask, device):
-        """
-        :param batch_X: (bs, num_nodes, num_node_feat), (bs, num_nodes, num_node_preprocess_feat),
-                        (bs, num_edges, 2), (bs, num_edges, num_edge_feat)
-        :param X_mask: (bs, num_nodes), (bs, num_edges)
-        :param device: cuda or cpu
-        """
-        node_features, node_preprocess_feat, edge_index, edge_features = [X.to(device) for X in batch_X]
-        node_encodings = torch.cat([self.atom_encoder(node_features), node_preprocess_feat], dim=2)
-
-        x_1, x_2 = get_node_feature_pairs(edge_index, node_encodings, device)
-        x_3 = self.bond_encoder(edge_features)
-        x = torch.cat([x_1, x_2, x_3], dim=2)
-
-        x = self.perceiver(x, mask=X_mask[1].to(device))
-        x = x.mean(dim=-2)
+        x = (x * edge_mask.unsqueeze(2)).sum(dim=1)
         return self.to_logits(x)

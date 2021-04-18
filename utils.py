@@ -13,7 +13,7 @@ from torch.utils.data import Dataset
 from ogb.utils.features import get_atom_feature_dims, get_bond_feature_dims
 from pytorch_lamb import Lamb
 
-from models.perceiver_graph_models import HIVPerceiverModel, HIVTransformerEncoderModel, PCBAPerceiverModel
+from models.perceiver_graph_models import MoleculePerceiverModel, MoleculeTransformerEncoderModel
 from models.loss_functions import CombinedCEandAUCLoss, SoftAUC, MultitaskCrossEntropyLoss
 
 
@@ -50,7 +50,10 @@ def parse_args():
     parser.add_argument("--attn_dropout", type=float, default=0.0)
     parser.add_argument("--ff_dropout", type=float, default=0.0)
     parser.add_argument("--weight_tie_layers", type=bool, default=False)
-    parser.add_argument("--node_edge_cross_attn", type=bool,default=False)
+    parser.add_argument("--node_edge_cross_attn", dest="node_edge_cross_attn", action="store_true")
+    parser.set_defaults(node_edge_cross_attn=False)
+    parser.add_argument("--nystrom", dest="nystrom", action="store_true")
+    parser.set_defaults(nystrom=False)
 
     # embedding details
     parser.add_argument("--atom_emb_dim", type=int, required=True)
@@ -226,32 +229,27 @@ def get_LPE_embeddings(n_nodes, edges, k):
 # factory methods for getting the components for training
 
 def make_model(args):
-    if args.model == "perceiver" and args.dataset == "molhiv":
-        return HIVPerceiverModel(atom_emb_dim=args.atom_emb_dim, bond_emb_dim=args.bond_emb_dim,
-                                 node_preprocess_dim=args.k_eigs,
-                                 p_depth=args.depth, p_latent_trsnfmr_depth=args.latent_transformer_depth,
-                                 p_num_latents=args.num_latents, p_latent_dim=args.latent_dim,
-                                 p_cross_heads=args.cross_heads, p_latent_heads=args.latent_heads,
-                                 p_cross_dim_head=args.cross_dim_head, p_latent_dim_head=args.latent_dim_head,
-                                 p_attn_dropout=args.attn_dropout, p_ff_dropout=args.ff_dropout,
-                                 p_weight_tie_layers=args.weight_tie_layers,
-                                 p_node_edge_cross_attn=args.node_edge_cross_attn)
-    elif args.model == "perceiver" and args.dataset == "molpcba":
-        return PCBAPerceiverModel(atom_emb_dim=args.atom_emb_dim, bond_emb_dim=args.bond_emb_dim,
-                                  node_preprocess_dim=args.k_eigs,
-                                  p_depth=args.depth, p_latent_trsnfmr_depth=args.latent_transformer_depth,
-                                  p_num_latents=args.num_latents, p_latent_dim=args.latent_dim,
-                                  p_cross_heads=args.cross_heads, p_latent_heads=args.latent_heads,
-                                  p_cross_dim_head=args.cross_dim_head, p_latent_dim_head=args.latent_dim_head,
-                                  p_attn_dropout=args.attn_dropout, p_ff_dropout=args.ff_dropout,
-                                  p_weight_tie_layers=args.weight_tie_layers)
+    num_outputs_dict = {"molhiv": 2, "molpcba": 128}
+    if args.model == "perceiver":
+        return MoleculePerceiverModel(atom_emb_dim=args.atom_emb_dim, bond_emb_dim=args.bond_emb_dim,
+                                      node_preprocess_dim=args.k_eigs,
+                                      p_depth=args.depth, p_latent_trsnfmr_depth=args.latent_transformer_depth,
+                                      p_num_latents=args.num_latents, p_latent_dim=args.latent_dim,
+                                      p_cross_heads=args.cross_heads, p_latent_heads=args.latent_heads,
+                                      p_cross_dim_head=args.cross_dim_head, p_latent_dim_head=args.latent_dim_head,
+                                      p_attn_dropout=args.attn_dropout, p_ff_dropout=args.ff_dropout,
+                                      p_weight_tie_layers=args.weight_tie_layers,
+                                      p_node_edge_cross_attn=args.node_edge_cross_attn,
+                                      p_num_outputs=num_outputs_dict[args.dataset])
     elif args.model == "transformer":
-        return HIVTransformerEncoderModel(atom_emb_dim=args.atom_emb_dim, bond_emb_dim=args.bond_emb_dim,
-                                          node_preprocess_dim=args.k_eigs,
-                                          n_layers=args.latent_transformer_depth, n_heads=args.latent_heads,
-                                          head_dim=args.latent_dim_head, pf_dim=None,
-                                          attn_dropout=args.attn_dropout, ff_dropout=args.ff_dropout
-                                          )
+        return MoleculeTransformerEncoderModel(atom_emb_dim=args.atom_emb_dim, bond_emb_dim=args.bond_emb_dim,
+                                               node_preprocess_dim=args.k_eigs,
+                                               n_layers=args.latent_transformer_depth, n_heads=args.latent_heads,
+                                               head_dim=args.latent_dim_head, pf_dim=None,
+                                               attn_dropout=args.attn_dropout, ff_dropout=args.ff_dropout,
+                                               num_outputs=num_outputs_dict[args.dataset],
+                                               nystrom=args.nystrom, n_landmarks=32
+                                               )
     else:
         raise Exception("invalid model type")
 

@@ -44,12 +44,10 @@ class PreNorm(nn.Module):
 
     def forward(self, x, **kwargs):
         x = self.norm(x)
-
         if exists(self.norm_context):
             context = kwargs['context']
             normed_context = self.norm_context(context)
             kwargs.update(context=normed_context)
-
         return self.fn(x, **kwargs)
 
 
@@ -82,8 +80,6 @@ class Attention(nn.Module):
 
         self.scale = dim_head ** -0.5
         self.heads = heads
-        self.query_dim = query_dim
-        self.context_dim = context_dim
 
         self.to_q = nn.Linear(query_dim, inner_dim, bias=False)
         self.to_kv = nn.Linear(context_dim, inner_dim * 2, bias=False)
