@@ -54,6 +54,7 @@ def parse_args():
     parser.set_defaults(node_edge_cross_attn=False)
     parser.add_argument("--nystrom", dest="nystrom", action="store_true")
     parser.set_defaults(nystrom=False)
+    parser.add_argument("--landmarks", type=int, default=32)
 
     # embedding details
     parser.add_argument("--atom_emb_dim", type=int, required=True)
@@ -248,7 +249,7 @@ def make_model(args):
                                                head_dim=args.latent_dim_head, pf_dim=None,
                                                attn_dropout=args.attn_dropout, ff_dropout=args.ff_dropout,
                                                num_outputs=num_outputs_dict[args.dataset],
-                                               nystrom=args.nystrom, n_landmarks=32
+                                               nystrom=args.nystrom, n_landmarks=args.landmarks
                                                )
     else:
         raise Exception("invalid model type")

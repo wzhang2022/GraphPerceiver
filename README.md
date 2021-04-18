@@ -19,7 +19,8 @@ python train.py --model perceiver --save_file nosave --run_name William_BigModel
 
 What each argument does:
 - A bunch of the parameters are just model architecture details.
-- `model` specifies that we are using the perceiver model, but this is redundant until we test out multiple models.
+- `model` should be either `perceiver` or `transformer`. See the `utils.py` file for the architectural parameters for each model.
+- If you are using `model=transformer`, then turn on `--nystrom` to use Nystrom attention approximation: [https://arxiv.org/pdf/2102.03902v3.pdf][here] and specify `--landmarks`.
 - `run_name` is the name of the run as shown by `wandb`.
 - `k_eigs` specifies how many eigenvectors to use for Laplacian positional encodings. If 0, it forgoes using LPEs.
 - `atom_emb_dim`, `bond_emb_dim` specifies the dimensions for the atom feature and bond feature embeddings.
