@@ -78,8 +78,9 @@ class NystromAttention(nn.Module):
         """
         id = torch.eye(mat.size(-1), device=mat.device)
         k = mat
-        v = 1 / torch.max(torch.sum(k, dim=-2), dim=-1)[0].data     # shape: (bs,)
-        v = v[:, None, None] * k.transpose(-1, -2)
+        scale_1 = 1 / torch.max(torch.sum(torch.abs(k), dim=-2), dim=-1)[0]    # shape: (bs,)
+        scale_2 = 1 / torch.max(torch.sum(torch.abs(k), dim=-1), dim=-1)[0]    # shape: (bs,)
+        v = k.transpose(-1, -2) * scale_1[:, None, None] * scale_2[:, None, None]
         for _ in range(n_iter):
             kv = torch.matmul(k, v)
             v = torch.matmul(0.25 * v, 13 * id - torch.matmul(kv, 15 * id - torch.matmul(kv, 7 * id - kv)))
