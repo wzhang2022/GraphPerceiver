@@ -123,7 +123,7 @@ if __name__ == "__main__":
         if args.load is not None:
             print("loading model")
             model.load_state_dict(torch.load(f"{args.load}.pt"))
-            metric = "rocauc" if args.dataset == "molhiv" else "ap"
+            metric = evaluator.eval_metric
             logged_info = {"test_loss": 0, "val_loss": 0, "train_loss": 0, "test_accuracy": 0, "val_accuracy": 0,
                            "train_accuracy": 0, f"test_{metric}": 0, f"val_{metric}": 0, f"train_{metric}": 0}
             for _ in range(args.load_epoch_start):
