@@ -37,6 +37,8 @@ def parse_args():
     parser.add_argument("--shuffle_split", dest="shuffle_split", action="store_true")
     parser.set_defaults(shuffle_split=False)
     parser.add_argument("--seed", type=int, default=1234)
+    parser.add_argument("--load", type=str)
+    parser.add_argument("--load_epoch_start", type=int)
 
     # architectural details
     parser.add_argument("--depth", type=int, default=3)
