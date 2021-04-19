@@ -119,11 +119,10 @@ if __name__ == "__main__":
     
     with wandb.init(project="GraphPerceiver", entity="wzhang2022", config=args):
         wandb.run.name = args.run_name
-        if args.load is None:
-            print("Making new model")
-            model = make_model(args).to(device)
-        else:
-            model = torch.load(f"{args.load}.pt").to(device)
+        model = make_model(args).to(device)
+        if args.load is not None:
+            print("loading model")
+            model.load_state_dict(torch.load(f"{args.load}.pt"))
             metric = "rocauc" if args.dataset == "molhiv" else "ap"
             logged_info = {"test_loss": 0, "val_loss": 0, "train_loss": 0, "test_accuracy": 0, "val_accuracy": 0,
                            "train_accuracy": 0, f"test_{metric}": 0, f"val_{metric}": 0, f"train_{metric}": 0}
