@@ -49,10 +49,10 @@ class HIVModelNodeOnly(nn.Module):
 
 
 class MoleculePerceiverModel(nn.Module):
-    def __init__(self, atom_emb_dim, bond_emb_dim,  node_preprocess_dim,
+    def __init__(self, atom_emb_dim, bond_emb_dim, node_preprocess_dim,
                  p_depth, p_latent_trsnfmr_depth, p_num_latents, p_latent_dim, p_cross_heads, p_latent_heads,
                  p_cross_dim_head, p_latent_dim_head, p_attn_dropout, p_ff_dropout, p_weight_tie_layers,
-                 p_node_edge_cross_attn, p_num_outputs):
+                 p_node_edge_cross_attn, p_num_outputs, connection_bias):
         super(MoleculePerceiverModel, self).__init__()
         self.atom_encoder = PaddedAtomEncoder(emb_dim=atom_emb_dim)
         self.bond_encoder = PaddedBondEncoder(emb_dim=bond_emb_dim)
@@ -79,6 +79,10 @@ class MoleculePerceiverModel(nn.Module):
             nn.Linear(p_latent_dim, p_num_outputs)
         )
 
+        self.connection_bias = connection_bias
+        if connection_bias:
+            self.connection_bias_weight = None
+
     def forward(self, batch_X, X_mask, device):
         """
         :param batch_X: (bs, num_nodes, num_node_feat), (bs, num_nodes, num_node_preprocess_feat),
@@ -104,9 +108,43 @@ class MoleculePerceiverModel(nn.Module):
         return self.to_logits(x)
 
 
-class HIVDomainAdapter(nn.Module):
+class PCBAtoHIVPerceiverTransferModel(nn.Module):
+    def __init__(self, pretrained_model: MoleculePerceiverModel):
+        super(PCBAtoHIVPerceiverTransferModel, self).__init__()
+
+        # freeze pretrained_model parameters
+        for params in pretrained_model.parameters():
+            params.requires_grad = False
+
+        self.atom_encoder = pretrained_model.atom_encoder
+        self.bond_encoder = pretrained_model.bond_encoder
+        self.latent_atom_encode = pretrained_model.latent_atom_encode
+        self.perceiver = pretrained_model.perceiver
+        self.latent_dim = pretrained_model.latent_dim
+        self.frozen_layers = pretrained_model
+
+
+        # make trainable final layer
+        self.to_logits = nn.Sequential(
+            nn.LayerNorm(self.latent_dim),
+            nn.Linear(self.latent_dim, 2)
+        )
+
+    def forward(self, batch_X, X_mask, device):
+        node_features, node_preprocess_feat, edge_index, edge_features = [X.to(device) for X in batch_X]
+        node_encodings = torch.cat([self.atom_encoder(node_features), node_preprocess_feat], dim=2)
+
+        x_1, x_2 = get_node_feature_pairs(edge_index, node_encodings, device)
+        x_3 = self.bond_encoder(edge_features)
+        x = torch.cat([x_1, x_2, x_3], dim=2)
+        x = self.perceiver(x, mask=X_mask[1].to(device))
+        x = x.mean(dim=-2)
+        return self.to_logits(x)
+
+
+class DomainAdapter(nn.Module):
     def __init__(self, encoder, discriminator, classifier):
-        super(HIVDomainAdapter, self).__init__()
+        super(DomainAdapter, self).__init__()
         self.encoder = encoder
         self.discriminator = discriminator
         self.classifier = classifier
@@ -118,27 +156,12 @@ class HIVDomainAdapter(nn.Module):
         :param X_mask: (bs, num_nodes), (bs, num_edges)
         :param device: cuda or cpu
         """
-        encoded_X = self.encoder(*args)
-        node_features, node_preprocess_feat, edge_index, edge_features = [X.to(device) for X in batch_X]
-        node_encodings = torch.cat([self.atom_encoder(node_features), node_preprocess_feat], dim=2)
-
-        x_1, x_2 = get_node_feature_pairs(edge_index, node_encodings, device)
-        x_3 = self.bond_encoder(edge_features)
-        x = torch.cat([x_1, x_2, x_3], dim=2)
-
-        if self.node_edge_cross_attn:
-            latent_node_feat = self.latent_atom_encode(node_features)
-            x = self.perceiver(x, mask=X_mask[1].to(device), latent_input=latent_node_feat)
-            x = x[:, :self.latent_dim, :]
-        else:
-            x = self.perceiver(x, mask=X_mask[1].to(device))
-
-        x = x.mean(dim=-2)
-        return self.to_logits(x)
+        # TODO: fill in domain adaptation
+        raise NotImplementedError
 
 
 class MoleculeTransformerEncoderModel(nn.Module):
-    def __init__(self, atom_emb_dim, bond_emb_dim,  node_preprocess_dim,
+    def __init__(self, atom_emb_dim, bond_emb_dim, node_preprocess_dim,
                  n_layers, n_heads, head_dim, pf_dim, attn_dropout, ff_dropout, num_outputs,
                  nystrom=False, n_landmarks=32):
         super(MoleculeTransformerEncoderModel, self).__init__()
@@ -176,7 +199,7 @@ class MoleculeTransformerEncoderModel(nn.Module):
         node_features, node_preprocess_feat, edge_index, edge_features = [X.to(device) for X in batch_X]
         node_encodings = torch.cat([self.atom_encoder(node_features), node_preprocess_feat], dim=2)
 
-        edge_mask = X_mask[1].to(device) # shape: (bs, num_edges)
+        edge_mask = X_mask[1].to(device)  # shape: (bs, num_edges)
         x_1, x_2 = get_node_feature_pairs(edge_index, node_encodings, device)
         x_3 = self.bond_encoder(edge_features)
         x = torch.cat([x_1, x_2, x_3], dim=2)

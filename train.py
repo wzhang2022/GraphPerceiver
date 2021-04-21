@@ -16,6 +16,10 @@ from utils import parse_args, mol_graph_collate, count_parameters, LPE, GraphDat
 def run_epoch(model, iterator, optimizer, clip, criterion, device, evaluator, mode="train"):
     if mode == "train":
         model.train()
+        try:
+            model.frozen_layers.eval()  # during transfer learning, turn on evaluation mode for dropout layers
+        except AttributeError:
+            pass
         optimizer.zero_grad()
     elif mode == "val" or mode == "test":
         model.eval()
@@ -120,14 +124,6 @@ if __name__ == "__main__":
     with wandb.init(project="GraphPerceiver", entity="wzhang2022", config=args):
         wandb.run.name = args.run_name
         model = make_model(args).to(device)
-        if args.load is not None:
-            print("loading model")
-            model.load_state_dict(torch.load(f"{args.load}.pt"))
-            metric = evaluator.eval_metric
-            logged_info = {"test_loss": 0, "val_loss": 0, "train_loss": 0, "test_accuracy": 0, "val_accuracy": 0,
-                           "train_accuracy": 0, f"test_{metric}": 0, f"val_{metric}": 0, f"train_{metric}": 0}
-            for _ in range(args.load_epoch_start):
-                wandb.log(logged_info)
 
         print(f"Model has {count_parameters(model)} parameters")
         print()

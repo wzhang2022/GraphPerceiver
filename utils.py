@@ -13,7 +13,8 @@ from torch.utils.data import Dataset
 from ogb.utils.features import get_atom_feature_dims, get_bond_feature_dims
 from pytorch_lamb import Lamb
 
-from models.perceiver_graph_models import MoleculePerceiverModel, MoleculeTransformerEncoderModel
+from models.perceiver_graph_models import MoleculePerceiverModel, MoleculeTransformerEncoderModel,\
+    PCBAtoHIVPerceiverTransferModel
 from models.loss_functions import CombinedCEandAUCLoss, SoftAUC, MultitaskCrossEntropyLoss
 
 
@@ -38,7 +39,9 @@ def parse_args():
     parser.set_defaults(shuffle_split=False)
     parser.add_argument("--seed", type=int, default=1234)
     parser.add_argument("--load", type=str)
-    parser.add_argument("--load_epoch_start", type=int)
+    parser.add_argument("--load_epoch_start", type=int, default=0)
+    parser.add_argument("--transfer_learn", dest="transfer_learn", action="store_true")
+    parser.set_defaults(transfer_learn=False)
 
     # architectural details
     parser.add_argument("--depth", type=int, default=3)
@@ -233,28 +236,37 @@ def get_LPE_embeddings(n_nodes, edges, k):
 
 def make_model(args):
     num_outputs_dict = {"molhiv": 2, "molpcba": 128}
+    model_dataset = "molpcba" if args.transfer_learn else args.dataset
     if args.model == "perceiver":
-        return MoleculePerceiverModel(atom_emb_dim=args.atom_emb_dim, bond_emb_dim=args.bond_emb_dim,
-                                      node_preprocess_dim=args.k_eigs,
-                                      p_depth=args.depth, p_latent_trsnfmr_depth=args.latent_transformer_depth,
-                                      p_num_latents=args.num_latents, p_latent_dim=args.latent_dim,
-                                      p_cross_heads=args.cross_heads, p_latent_heads=args.latent_heads,
-                                      p_cross_dim_head=args.cross_dim_head, p_latent_dim_head=args.latent_dim_head,
-                                      p_attn_dropout=args.attn_dropout, p_ff_dropout=args.ff_dropout,
-                                      p_weight_tie_layers=args.weight_tie_layers,
-                                      p_node_edge_cross_attn=args.node_edge_cross_attn,
-                                      p_num_outputs=num_outputs_dict[args.dataset])
+        model = MoleculePerceiverModel(atom_emb_dim=args.atom_emb_dim, bond_emb_dim=args.bond_emb_dim,
+                                       node_preprocess_dim=args.k_eigs,
+                                       p_depth=args.depth, p_latent_trsnfmr_depth=args.latent_transformer_depth,
+                                       p_num_latents=args.num_latents, p_latent_dim=args.latent_dim,
+                                       p_cross_heads=args.cross_heads, p_latent_heads=args.latent_heads,
+                                       p_cross_dim_head=args.cross_dim_head, p_latent_dim_head=args.latent_dim_head,
+                                       p_attn_dropout=args.attn_dropout, p_ff_dropout=args.ff_dropout,
+                                       p_weight_tie_layers=args.weight_tie_layers,
+                                       p_node_edge_cross_attn=args.node_edge_cross_attn,
+                                       p_num_outputs=num_outputs_dict[model_dataset],
+                                       connection_bias=False)
     elif args.model == "transformer":
-        return MoleculeTransformerEncoderModel(atom_emb_dim=args.atom_emb_dim, bond_emb_dim=args.bond_emb_dim,
-                                               node_preprocess_dim=args.k_eigs,
-                                               n_layers=args.latent_transformer_depth, n_heads=args.latent_heads,
-                                               head_dim=args.latent_dim_head, pf_dim=None,
-                                               attn_dropout=args.attn_dropout, ff_dropout=args.ff_dropout,
-                                               num_outputs=num_outputs_dict[args.dataset],
-                                               nystrom=args.nystrom, n_landmarks=args.landmarks
-                                               )
+        model = MoleculeTransformerEncoderModel(atom_emb_dim=args.atom_emb_dim, bond_emb_dim=args.bond_emb_dim,
+                                                node_preprocess_dim=args.k_eigs,
+                                                n_layers=args.latent_transformer_depth, n_heads=args.latent_heads,
+                                                head_dim=args.latent_dim_head, pf_dim=None,
+                                                attn_dropout=args.attn_dropout, ff_dropout=args.ff_dropout,
+                                                num_outputs=num_outputs_dict[model_dataset],
+                                                nystrom=args.nystrom, n_landmarks=args.landmarks)
     else:
         raise Exception("invalid model type")
+    if args.load is not None:
+        print("loading model")
+        model.load_state_dict(torch.load(f"{args.load}.pt"))
+    if args.transfer_learn:
+        model = PCBAtoHIVPerceiverTransferModel(model)
+
+    return model
+
 
 
 def make_criterion(args):
