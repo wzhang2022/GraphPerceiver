@@ -123,10 +123,11 @@ class PCBAtoHIVPerceiverTransferModel(nn.Module):
         self.latent_dim = pretrained_model.latent_dim
         self.frozen_layers = pretrained_model
 
-
-        # make trainable final layer
+        # make trainable final layers
         self.to_logits = nn.Sequential(
             nn.LayerNorm(self.latent_dim),
+            nn.Linear(self.latent_dim, self.latent_dim),
+            nn.ReLU(),
             nn.Linear(self.latent_dim, 2)
         )
 
