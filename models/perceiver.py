@@ -131,12 +131,13 @@ class TransformerEncoder(nn.Module):
             ]) for _ in range(n_layers)
         ])
 
-    def forward(self, data, mask):
+    def forward(self, data, mask=None):
         bs, num_tokens, _ = data.shape
         x = data
 
         # convert mask from shape (bs, num_tokens) to (bs, num_tokens, num_tokens)
-        mask = torch.einsum("bi,bj->bij", mask, mask)
+        if exists(mask):
+            mask = torch.einsum("bi,bj->bij", mask, mask)
         for self_attn, positionwise_ff in self.layers:
             x = self_attn(x, mask=mask, mask_kv_only=False) + x
             x = positionwise_ff(x) + x

@@ -60,6 +60,9 @@ def parse_args():
     parser.add_argument("--nystrom", dest="nystrom", action="store_true")
     parser.set_defaults(nystrom=False)
     parser.add_argument("--landmarks", type=int, default=32)
+    parser.add_argument("--multi_classifier", dest="multi_classifier", action="store_true")
+    parser.set_defaults(multi_classifier=False)
+    parser.add_argument("--num_classifier", type=int, default=1)
 
     # embedding details
     parser.add_argument("--atom_emb_dim", type=int, required=True)
@@ -247,8 +250,8 @@ def make_model(args):
                                        p_attn_dropout=args.attn_dropout, p_ff_dropout=args.ff_dropout,
                                        p_weight_tie_layers=args.weight_tie_layers,
                                        p_node_edge_cross_attn=args.node_edge_cross_attn,
-                                       p_num_outputs=num_outputs_dict[model_dataset],
-                                       connection_bias=False)
+                                       p_num_outputs=num_outputs_dict[model_dataset], connection_bias=False,
+                                       multi_classification=args.multi_classifier, num_classifiers=args.num_classifier)
     elif args.model == "transformer":
         model = MoleculeTransformerEncoderModel(atom_emb_dim=args.atom_emb_dim, bond_emb_dim=args.bond_emb_dim,
                                                 node_preprocess_dim=args.k_eigs,

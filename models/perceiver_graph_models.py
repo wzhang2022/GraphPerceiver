@@ -4,6 +4,7 @@ from models.perceiver import Perceiver, TransformerEncoder
 from models.nystromformer import Nystromformer
 from models.padded_mol_encoder import PaddedAtomEncoder, PaddedBondEncoder
 from einops import rearrange
+from einops.layers.torch import Reduce
 
 
 def get_node_feature_pairs(edge_index, node_encodings, device):
@@ -52,7 +53,7 @@ class MoleculePerceiverModel(nn.Module):
     def __init__(self, atom_emb_dim, bond_emb_dim, node_preprocess_dim,
                  p_depth, p_latent_trsnfmr_depth, p_num_latents, p_latent_dim, p_cross_heads, p_latent_heads,
                  p_cross_dim_head, p_latent_dim_head, p_attn_dropout, p_ff_dropout, p_weight_tie_layers,
-                 p_node_edge_cross_attn, p_num_outputs, connection_bias):
+                 p_node_edge_cross_attn, p_num_outputs, connection_bias, multi_classification, num_classifiers):
         super(MoleculePerceiverModel, self).__init__()
         self.atom_encoder = PaddedAtomEncoder(emb_dim=atom_emb_dim)
         self.bond_encoder = PaddedBondEncoder(emb_dim=bond_emb_dim)
@@ -83,6 +84,31 @@ class MoleculePerceiverModel(nn.Module):
         if connection_bias:
             self.connection_bias_weight = None
 
+        self.multi_classification = multi_classification
+        if multi_classification:
+            assert p_num_outputs % num_classifiers == 0
+            self.classifiers = nn.ModuleList([
+                nn.Sequential(
+                    TransformerEncoder(
+                        query_dim=p_latent_dim,
+                        n_layers=2,
+                        n_heads=p_latent_heads,
+                        head_dim=p_latent_dim_head,
+                        pf_dim=p_latent_dim * 2,
+                        attn_dropout=p_attn_dropout,
+                        ff_dropout=p_attn_dropout),
+                    Reduce("b n d -> b d", "mean"),
+                    nn.LayerNorm(p_latent_dim),
+                    nn.Linear(p_latent_dim, p_num_outputs // num_classifiers)
+                )
+                for _ in range(num_classifiers)])
+
+        self.to_logits = nn.Sequential(
+            Reduce("b n d -> b d", "mean"),
+            nn.LayerNorm(p_latent_dim),
+            nn.Linear(p_latent_dim, p_num_outputs)
+        )
+
     def forward(self, batch_X, X_mask, device):
         """
         :param batch_X: (bs, num_nodes, num_node_feat), (bs, num_nodes, num_node_preprocess_feat),
@@ -104,8 +130,10 @@ class MoleculePerceiverModel(nn.Module):
         else:
             x = self.perceiver(x, mask=X_mask[1].to(device))
 
-        x = x.mean(dim=-2)
-        return self.to_logits(x)
+        if self.multi_classification:
+            return torch.cat([cls(x) for cls in self.classifiers], dim=-1)
+        else:
+            return self.to_logits(x)
 
 
 class PCBAtoHIVPerceiverTransferModel(nn.Module):
