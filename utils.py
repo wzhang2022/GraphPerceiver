@@ -44,6 +44,8 @@ def parse_args():
     parser.add_argument("--load_epoch_start", type=int, default=0)
     parser.add_argument("--transfer_learn", dest="transfer_learn", action="store_true")
     parser.set_defaults(transfer_learn=False)
+    parser.add_argument("--num_flag_steps", type=int, default=0)
+    parser.add_argument("--flag_step_size", type=float, default=0.001)
 
     # architectural details
     parser.add_argument("--depth", type=int, default=3)
