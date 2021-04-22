@@ -109,7 +109,7 @@ class MoleculePerceiverModel(nn.Module):
             nn.Linear(p_latent_dim, p_num_outputs)
         )
 
-    def forward(self, batch_X, X_mask, device):
+    def forward(self, batch_X, X_mask, device, node_pert=None):
         """
         :param batch_X: (bs, num_nodes, num_node_feat), (bs, num_nodes, num_node_preprocess_feat),
                         (bs, num_edges, 2), (bs, num_edges, num_edge_feat)
@@ -118,6 +118,8 @@ class MoleculePerceiverModel(nn.Module):
         """
         node_features, node_preprocess_feat, edge_index, edge_features = [X.to(device) for X in batch_X]
         node_encodings = torch.cat([self.atom_encoder(node_features), node_preprocess_feat], dim=2)
+        if node_pert is not None:
+            node_encodings += node_pert
 
         x_1, x_2 = get_node_feature_pairs(edge_index, node_encodings, device)
         x_3 = self.bond_encoder(edge_features)
