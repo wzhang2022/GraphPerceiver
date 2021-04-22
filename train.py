@@ -1,16 +1,15 @@
-from torch.utils.data import DataLoader
+
 import torch
 import numpy as np
 import wandb
 import time
-from functools import partial
+
 import random
 
-from ogb.graphproppred import GraphPropPredDataset
 from ogb.graphproppred import Evaluator
 
 from utils import parse_args, mol_graph_collate, count_parameters, LPE, GraphDataset, make_model, make_criterion, \
-    make_optimizer, make_scheduler
+    make_optimizer, make_scheduler, make_dataloaders
 
 
 def run_epoch(model, iterator, optimizer, clip, criterion, device, evaluator, mode="train"):
@@ -95,28 +94,9 @@ if __name__ == "__main__":
     # preprocessing: start
     pp_start_time = time.time()
 
-    dataset = GraphPropPredDataset(name=f"ogbg-{args.dataset}", root='dataset/')
     evaluator = Evaluator(name=f"ogbg-{args.dataset}")
-    if args.shuffle_split:
-        print("Shuffled data split")
-        indices = np.random.permutation(len(dataset))
-        idx1, idx2 = int(len(dataset) * 0.8), int(len(dataset) * 0.9)
-        train, valid, test = indices[:idx1], indices[idx1:idx2], indices[idx2:]
-        split_idx = {"train": train, "valid": valid, "test": test}
-    else:
-        print("Original data split")
-        split_idx = dataset.get_idx_split()
+    train_loader, valid_loader, test_loader = make_dataloaders(args)
 
-    graph_preprocess_fns = [LPE(args.k_eigs)] if args.k_eigs > 0 else []
-    train_data = GraphDataset([dataset[i] for i in split_idx["train"]], preprocess=graph_preprocess_fns)
-    valid_data = GraphDataset([dataset[i] for i in split_idx["valid"]], preprocess=graph_preprocess_fns)
-    test_data = GraphDataset([dataset[i] for i in split_idx["test"]], preprocess=graph_preprocess_fns)
-
-    collate_fn = partial(mol_graph_collate, dataset_name=args.dataset)
-    train_loader = DataLoader(train_data, batch_size=args.batch_size, shuffle=True, collate_fn=collate_fn)
-    valid_loader = DataLoader(valid_data, batch_size=args.batch_size, shuffle=True, collate_fn=collate_fn)
-    test_loader = DataLoader(test_data, batch_size=args.batch_size, shuffle=True, collate_fn=collate_fn)
-    
     pp_end_time = time.time()
     pp_mins, pp_secs = epoch_time(pp_start_time, pp_end_time)
     print(f'Preprocessing time: {pp_mins}m {pp_secs}s')

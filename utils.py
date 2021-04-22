@@ -4,7 +4,6 @@ import torch
 import traceback
 import warnings
 import sys
-import random
 import numpy as np
 
 import torch.nn as nn
@@ -12,6 +11,9 @@ from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data import Dataset
 from ogb.utils.features import get_atom_feature_dims, get_bond_feature_dims
 from pytorch_lamb import Lamb
+from ogb.graphproppred import GraphPropPredDataset
+from functools import partial
+from torch.utils.data import DataLoader
 
 from models.perceiver_graph_models import MoleculePerceiverModel, MoleculeTransformerEncoderModel,\
     PCBAtoHIVPerceiverTransferModel
@@ -349,3 +351,28 @@ def make_scheduler(args, optimizer):
 
     else:
         raise Exception("Invalid scheduler provided")
+
+
+def make_dataloaders(args):
+    dataset = GraphPropPredDataset(name=f"ogbg-{args.dataset}", root='dataset/')
+    if args.shuffle_split:
+        print("Shuffled data split")
+        indices = np.random.permutation(len(dataset))
+        idx1, idx2 = int(len(dataset) * 0.8), int(len(dataset) * 0.9)
+        train, valid, test = indices[:idx1], indices[idx1:idx2], indices[idx2:]
+        split_idx = {"train": train, "valid": valid, "test": test}
+    else:
+        print("Original data split")
+        split_idx = dataset.get_idx_split()
+
+    graph_preprocess_fns = [LPE(args.k_eigs)] if args.k_eigs > 0 else []
+    train_data = GraphDataset([dataset[i] for i in split_idx["train"]], preprocess=graph_preprocess_fns)
+    valid_data = GraphDataset([dataset[i] for i in split_idx["valid"]], preprocess=graph_preprocess_fns)
+    test_data = GraphDataset([dataset[i] for i in split_idx["test"]], preprocess=graph_preprocess_fns)
+
+    collate_fn = partial(mol_graph_collate, dataset_name=args.dataset)
+    train_loader = DataLoader(train_data, batch_size=args.batch_size, shuffle=True, collate_fn=collate_fn)
+    valid_loader = DataLoader(valid_data, batch_size=args.batch_size, shuffle=True, collate_fn=collate_fn)
+    test_loader = DataLoader(test_data, batch_size=args.batch_size, shuffle=True, collate_fn=collate_fn)
+    return train_loader, valid_loader, test_loader
+
