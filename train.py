@@ -32,7 +32,7 @@ def run_epoch(model, iterator, optimizer, criterion, device, evaluator, mode, ar
     accuracy = 0
     evaluator_dict = {'y_true': [], 'y_pred': []}
     for i, (batch_X, X_mask, batch_y) in enumerate(iterator):
-        if args.num_flag_steps > 0:
+        if (mode == "train") and args.num_flag_steps > 0:
             # forward pass for FLAG training
             node_features, node_preprocess_feat, edge_index, edge_features = batch_X
             pert = torch.FloatTensor(node_features.shape[0], node_features.shape[1], args.atom_emb_dim + args.k_eigs)
@@ -42,7 +42,7 @@ def run_epoch(model, iterator, optimizer, criterion, device, evaluator, mode, ar
             output = model(batch_X, X_mask, device, node_pert=pert)
             loss = criterion(output, batch_y.to(device)) / args.num_flag_steps
         else:
-            # forward pass for normal training
+            # forward pass for normal training and forward pass
             output = model(batch_X, X_mask, device)
             loss = criterion(output, batch_y.to(device))
 
