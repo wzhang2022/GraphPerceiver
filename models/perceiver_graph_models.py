@@ -53,7 +53,8 @@ class MoleculePerceiverModel(nn.Module):
     def __init__(self, atom_emb_dim, bond_emb_dim, node_preprocess_dim,
                  p_depth, p_latent_trsnfmr_depth, p_num_latents, p_latent_dim, p_cross_heads, p_latent_heads,
                  p_cross_dim_head, p_latent_dim_head, p_attn_dropout, p_ff_dropout, p_weight_tie_layers,
-                 p_node_edge_cross_attn, p_num_outputs, connection_bias, multi_classification, num_classifiers):
+                 p_node_edge_cross_attn, p_num_outputs, connection_bias, multi_classification, num_classifiers,
+                 classifier_transformer_layers):
         super(MoleculePerceiverModel, self).__init__()
         self.atom_encoder = PaddedAtomEncoder(emb_dim=atom_emb_dim)
         self.bond_encoder = PaddedBondEncoder(emb_dim=bond_emb_dim)
@@ -91,7 +92,7 @@ class MoleculePerceiverModel(nn.Module):
                 nn.Sequential(
                     TransformerEncoder(
                         query_dim=p_latent_dim,
-                        n_layers=2,
+                        n_layers=classifier_transformer_layers,
                         n_heads=p_latent_heads,
                         head_dim=p_latent_dim_head,
                         pf_dim=p_latent_dim * 2,

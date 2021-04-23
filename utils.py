@@ -58,7 +58,8 @@ def parse_args():
     parser.add_argument("--latent_dim_head", type=int, default=32)
     parser.add_argument("--attn_dropout", type=float, default=0.0)
     parser.add_argument("--ff_dropout", type=float, default=0.0)
-    parser.add_argument("--weight_tie_layers", type=bool, default=False)
+    parser.add_argument("--weight_tie_layers", dest="weight_tie_layers", action="store_true")
+    parser.set_defaults(weight_tie_layers=False)
     parser.add_argument("--node_edge_cross_attn", dest="node_edge_cross_attn", action="store_true")
     parser.set_defaults(node_edge_cross_attn=False)
     parser.add_argument("--nystrom", dest="nystrom", action="store_true")
@@ -67,6 +68,7 @@ def parse_args():
     parser.add_argument("--multi_classifier", dest="multi_classifier", action="store_true")
     parser.set_defaults(multi_classifier=False)
     parser.add_argument("--num_classifier", type=int, default=1)
+    parser.add_argument("--classifier_transformer_layers", type=int, default=1)
 
     # embedding details
     parser.add_argument("--atom_emb_dim", type=int, required=True)
@@ -255,7 +257,8 @@ def make_model(args):
                                        p_weight_tie_layers=args.weight_tie_layers,
                                        p_node_edge_cross_attn=args.node_edge_cross_attn,
                                        p_num_outputs=num_outputs_dict[model_dataset], connection_bias=False,
-                                       multi_classification=args.multi_classifier, num_classifiers=args.num_classifier)
+                                       multi_classification=args.multi_classifier, num_classifiers=args.num_classifier,
+                                       classifier_transformer_layers=args.classifier_transformer_layers)
     elif args.model == "transformer":
         model = MoleculeTransformerEncoderModel(atom_emb_dim=args.atom_emb_dim, bond_emb_dim=args.bond_emb_dim,
                                                 node_preprocess_dim=args.k_eigs,
