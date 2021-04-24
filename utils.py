@@ -98,6 +98,9 @@ def parse_args():
     parser.add_argument("--auc_weight", type=float, default=1.0)
 
     # data details
+    parser.add_argument("--remove_hiv_overlap", dest="remove_hiv_overlap", action="store_true") # take hiv test overlap out of pcba train set
+    parser.set_defaults(remove_hiv_overlap=False)
+
     return parser.parse_args()
 
 
@@ -369,6 +372,27 @@ def make_dataloaders(args):
     else:
         print("Original data split")
         split_idx = dataset.get_idx_split()
+
+    if args.dataset == "molpcba" and args.remove_hiv_overlap:
+        print("Removing overlapping HIV test data from PCBA train data")
+
+        df_pcba = pd.read_csv('./dataset/ogbg_molpcba/mapping/mol.csv.gz', compression='gzip')
+        # pcba_train_idx = pd.read_csv('./dataset/ogbg_molpcba/split/scaffold/train.csv.gz', compression='gzip')
+        # pcba_train_smiles_set = set(df_pcba['smiles'].to_numpy()[pcba_train_idx].reshape(-1))
+
+        dataset = GraphPropPredDataset(name=f"ogbg-molhiv", root='dataset/')
+        df_hiv = pd.read_csv('./dataset/ogbg_molhiv/mapping/mol.csv.gz', compression='gzip')
+        hiv_test_idx = pd.read_csv('./dataset/ogbg_molhiv/split/scaffold/test.csv.gz', compression='gzip')
+        # hiv_test_smiles_set = set(df_hiv['smiles'].to_numpy()[hiv_test_idx].reshape(-1))
+        # intersect = hiv_test_smiles_set.intersection(pcba_train_smiles_set)
+
+        # pcba_train = df_pcba.iloc[pcba_train_idx['0']]
+        pcba_train = df_pcba.iloc[train] # use train indices from earlier data split
+        hiv_test = df_hiv.iloc[hiv_test_idx['0']]
+
+        overlapping_indices = pcba_train[pcba_train['smiles'].isin(hiv_test['smiles'])].index.values
+        pcba_train_overlap_removed = np.delete(pcba_split_idx['train'], np.isin(pcba_split_idx['train'], overlapping_indices))
+        split_idx["train"] = pcba_train_overlap_removed
 
     graph_preprocess_fns = [LPE(args.k_eigs)] if args.k_eigs > 0 else []
     train_data = GraphDataset([dataset[i] for i in split_idx["train"]], preprocess=graph_preprocess_fns)
