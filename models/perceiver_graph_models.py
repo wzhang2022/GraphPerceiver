@@ -154,7 +154,7 @@ class PCBAtoHIVPerceiverTransferModel(nn.Module):
         self.latent_atom_encode = pretrained_model.latent_atom_encode
         self.perceiver = pretrained_model.perceiver
         self.latent_dim = pretrained_model.latent_dim
-        self.frozen_layers = pretrained_model
+        self.pretrained_model = pretrained_model
 
         # make trainable final layers
         self.to_logits = nn.Sequential(
@@ -165,11 +165,12 @@ class PCBAtoHIVPerceiverTransferModel(nn.Module):
         )
 
     def unfreeze_layers(self, optimizer, lr_for_unfrozen = .000001):
-        for params in pretrained_model.parameters()[-layers_to_unfreeze:]:
+        for params in list(self.pretrained_model.parameters())[-self.layers_to_unfreeze:]:
             params.requires_grad = True
 
-        optimizer.add_param_group('params': filter(lambda x: return x.requires_grad, pretrained_model.parameters()),
-                                  'lr': lr_for_unfrozen)
+        # keep getting ValueError: some parameters appear in more than one parameter group ????
+        optimizer.add_param_group({'params': filter(lambda x: x.requires_grad, self.pretrained_model.parameters()),
+                                  'lr': lr_for_unfrozen})
         # for g in optimizer.param_groups:
         #     g['lr'] = lr_for_unfrozen
 

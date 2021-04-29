@@ -388,7 +388,7 @@ def make_dataloaders(args):
         df_hiv = pd.read_csv('./dataset/ogbg_molhiv/mapping/mol.csv.gz', compression='gzip')
         hiv_test_idx = pd.read_csv('./dataset/ogbg_molhiv/split/scaffold/test.csv.gz', compression='gzip')
 
-        pcba_train = df_pcba.iloc[train] # use train indices from earlier data split
+        pcba_train = df_pcba.iloc[split_idx['train']] # use train indices from earlier data split
         hiv_test = df_hiv.iloc[hiv_test_idx['0']]
 
         overlapping_indices = pcba_train[pcba_train['smiles'].isin(hiv_test['smiles'])].index.values
