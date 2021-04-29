@@ -43,8 +43,6 @@ def parse_args():
     parser.add_argument("--seed", type=int, default=1234)
     parser.add_argument("--load", type=str)
     parser.add_argument("--load_epoch_start", type=int, default=0)
-    parser.add_argument("--transfer_learn", dest="transfer_learn", action="store_true")
-    parser.set_defaults(transfer_learn=False)
     parser.add_argument("--num_flag_steps", type=int, default=0)
     parser.add_argument("--flag_step_size", type=float, default=0.001)
 
@@ -98,7 +96,12 @@ def parse_args():
     parser.set_defaults(ce_weighted=True)
     parser.add_argument("--auc_weight", type=float, default=1.0)
 
-    # data details
+    # transfer learning details
+    parser.add_argument("--transfer_learn", dest="transfer_learn", action="store_true")
+    parser.set_defaults(transfer_learn=False)
+    parser.add_argument("--layers_to_unfreeze", type=int, default=0) # num layers (starting from end) to unfreeze for finetuning
+    parser.add_argument("--unfrozen_training_epochs", type=int, default=0) # train new layers for n_epochs - unfrozen_training_epochs, then unfreeze pretrained layers and train for unfrozen_training_epochs
+    parser.add_argument("--lr_for_unfrozen", type=float, default=0.000001)
     parser.add_argument("--remove_hiv_overlap", dest="remove_hiv_overlap", action="store_true") # take hiv test overlap out of pcba train set
     parser.set_defaults(remove_hiv_overlap=False)
 
@@ -277,7 +280,9 @@ def make_model(args):
         print("loading model")
         model.load_state_dict(torch.load(f"{args.load}.pt"))
     if args.transfer_learn:
-        model = PCBAtoHIVPerceiverTransferModel(model)
+        model = PCBAtoHIVPerceiverTransferModel(model, 
+                                                layers_to_unfreeze=args.layers_to_unfreeze, 
+                                                epochs_before_unfreeze = args.n_epochs - args.unfrozen_training_epochs)
 
     return model
 

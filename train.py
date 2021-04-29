@@ -133,6 +133,9 @@ if __name__ == "__main__":
         
         # begin training
         for epoch in range(args.n_epochs):
+            if args.transfer_learn and args.layers_to_unfreeze > 0 and epoch == model.epochs_before_unfreeze:
+                print("Unfreezing last " + str(args.layers_to_unfreeze) + " layers for finetuning...")
+                model.unfreeze_layers(optimizer, lr_for_unfrozen=args.lr_for_unfrozen)
 
             start_time = time.time()
 

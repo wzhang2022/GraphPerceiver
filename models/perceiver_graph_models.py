@@ -140,13 +140,15 @@ class MoleculePerceiverModel(nn.Module):
 
 
 class PCBAtoHIVPerceiverTransferModel(nn.Module):
-    def __init__(self, pretrained_model: MoleculePerceiverModel):
+    def __init__(self, pretrained_model: MoleculePerceiverModel, layers_to_unfreeze, epochs_before_unfreeze):
         super(PCBAtoHIVPerceiverTransferModel, self).__init__()
 
         # freeze pretrained_model parameters
         for params in pretrained_model.parameters():
             params.requires_grad = False
 
+        self.layers_to_unfreeze = layers_to_unfreeze
+        self.epochs_before_unfreeze = epochs_before_unfreeze
         self.atom_encoder = pretrained_model.atom_encoder
         self.bond_encoder = pretrained_model.bond_encoder
         self.latent_atom_encode = pretrained_model.latent_atom_encode
@@ -161,6 +163,15 @@ class PCBAtoHIVPerceiverTransferModel(nn.Module):
             nn.ReLU(),
             nn.Linear(self.latent_dim, 2)
         )
+
+    def unfreeze_layers(self, optimizer, lr_for_unfrozen = .000001):
+        for params in pretrained_model.parameters()[-layers_to_unfreeze:]:
+            params.requires_grad = True
+
+        optimizer.add_param_group('params': filter(lambda x: return x.requires_grad, pretrained_model.parameters()),
+                                  'lr': lr_for_unfrozen)
+        # for g in optimizer.param_groups:
+        #     g['lr'] = lr_for_unfrozen
 
     def forward(self, batch_X, X_mask, device):
         node_features, node_preprocess_feat, edge_index, edge_features = [X.to(device) for X in batch_X]
