@@ -15,7 +15,7 @@ ogb==1.3.0
 How to run example:
 
 ``
-python train.py --model perceiver --save_file nosave --run_name William_BigModel --k_eigs 10 --atom_emb_dim 128 --bond_emb_dim 32 --batch_size 84 --depth 5 --num_latents 128 --latent_dim 128 --cross_heads 2 --latent_heads 4 --cross_dim_head 64 --latent_dim_head 64 --attn_dropout 0.2 --ff_dropout 0.2 --batch_size 16 --learning_rate 0.0001 --lr_decay 1 --scheduler exponential --n_epochs 40``
+python train.py --model perceiver --save_file nosave --run_name William_BigModel --k_eigs 10 --H 4 --atom_emb_dim 128 --bond_emb_dim 32 --batch_size 84 --depth 5 --num_latents 128 --latent_dim 128 --cross_heads 2 --latent_heads 4 --cross_dim_head 64 --latent_dim_head 64 --attn_dropout 0.2 --ff_dropout 0.2 --batch_size 16 --learning_rate 0.0001 --lr_decay 1 --scheduler exponential --n_epochs 40``
 
 What each argument does:
 - A bunch of the parameters are just model architecture details.
@@ -23,6 +23,7 @@ What each argument does:
 - If you are using `model=transformer`, then turn on `--nystrom` to use Nystrom attention approximation: [https://arxiv.org/pdf/2102.03902v3.pdf][here] and specify `--landmarks`.
 - `run_name` is the name of the run as shown by `wandb`.
 - `k_eigs` specifies how many eigenvectors to use for Laplacian positional encodings. If 0, it forgoes using LPEs.
+- `H` specifies how many iterations to run Weisfeiller-Lehman for to get kernel representation. If 0, it forgoes using Weisfeiller-Lehman.
 - `atom_emb_dim`, `bond_emb_dim` specifies the dimensions for the atom feature and bond feature embeddings.
 - `device` should always be `0` for `cuda`. We should not be running on CPU, so this argument is redundant.
 - `save_file` specifies where to save the weights of the best model, as measured by validation loss.
