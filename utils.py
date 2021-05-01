@@ -4,8 +4,8 @@ import torch
 import traceback
 import warnings
 import sys
+import copy
 import numpy as np
-import pandas as pd
 
 import torch.nn as nn
 from torch.nn.utils.rnn import pad_sequence
@@ -75,6 +75,7 @@ def parse_args():
     parser.add_argument("--atom_emb_dim", type=int, required=True)
     parser.add_argument("--bond_emb_dim", type=int, required=True)
     parser.add_argument("--k_eigs", type=int, required=True)  # specifies # of e-vectors to use
+    parser.add_argument("--H", type=int, required=True)
 
     # training details
     parser.add_argument("--batch_size", type=int, default=64)
@@ -99,9 +100,6 @@ def parse_args():
     parser.add_argument("--auc_weight", type=float, default=1.0)
 
     # data details
-    parser.add_argument("--remove_hiv_overlap", dest="remove_hiv_overlap", action="store_true") # take hiv test overlap out of pcba train set
-    parser.set_defaults(remove_hiv_overlap=False)
-
     return parser.parse_args()
 
 
@@ -243,6 +241,139 @@ def get_LPE_embeddings(n_nodes, edges, k):
         eigvecs = vecs[:, n_nodes - k:]  # k columns corresponding to greatest eigenvalues
         assert eigvecs.shape == (n_nodes, k)
         return eigvecs
+    
+    
+    
+# Wesifeiller-Lehman Kernel Utils
+
+class WL(object):
+    """
+    Given raw data from GraphPropPredDataset, add WL kernel from first H iters
+    Args:
+        H (int): Number of iterations to run WL for
+    """
+
+    def __init__(self, H):
+        self.H = H
+
+    def __call__(self, data_sample):
+        dictionary = data_sample[0]
+        y = data_sample[1]
+
+        # keys: ['edge_index', 'edge_feat', 'node_feat', 'num_nodes']
+        wl_kernel = get_wl_kernel(dictionary['num_nodes'], dictionary['edge_index'], self.H)
+
+        new_dictionary = copy.deepcopy(dictionary)
+        new_dictionary['wl_kernel_preprocess'] = wl_kernel
+
+        return (new_dictionary, y)
+    
+
+def get_wl_kernel(n_nodes, edges, H):
+    """
+    :n_nodes: |V|
+    :edges: [list of head nodes, list of tail nodes]
+    :H: hyperparameter, determines how many iterations to use for WL
+    """
+    
+    # HELPER FUNCTIONS
+    
+    
+    def get_counts(colors):
+        """
+        given a list of colors, return counts list
+        """
+        color_to_vertex = dict()
+        for ind in range(len(colors)):
+            if colors[ind] not in color_to_vertex:
+                color_to_vertex[colors[ind]] = [ind]
+            else:
+                color_to_vertex[colors[ind]].append(ind)
+        counts = [0] * len(colors)
+        for i in range(len(colors)):
+            counts[i] += len(color_to_vertex[colors[ind]])
+        return counts
+        
+    
+    def get_adj_list(n_nodes, edges):
+        """
+        return: adjacency list
+        """
+        adj = [[] for i in range(n_nodes)]
+        for ind in range(len(edges[0])):
+            adj[edges[0][ind]].append(edges[1][ind])            
+        return adj
+    
+    def get_degrees(n_nodes, edges):
+        """
+        return: array of length |V| containing degrees
+        """
+        deg = [0]*n_nodes
+        for ind in range(len(edges[0])):
+            deg[edges[0][ind]] += 1
+        return deg
+
+    deg = get_degrees(n_nodes, edges)
+    
+    # initializing colors l_0 based on degrees as in Shervadize et al.
+    # the following constructs init_colors in a way that is in one-to-one
+    # correspondence with deg
+    init_colors = [0]*n_nodes
+    indices_sort = np.argsort(deg)
+    prev = deg[indices_sort[0]]
+    prev_ind = indices_sort[0]
+    for ind in indices_sort:
+        if deg[ind] == prev:
+            init_colors[ind] = init_colors[prev_ind]
+        else:
+            init_colors[ind] = init_colors[prev_ind] + 1
+            prev = deg[ind]
+            prev_ind = ind
+            
+    adj = get_adj_list(n_nodes, edges)
+    
+    total_counts = []
+    init_counts = get_counts(init_colors)
+    total_counts.append(init_counts)
+    prev_colors = copy.deepcopy(init_colors)
+    
+    for iteration in range(H):
+        # color_multiset will hold multiset of neighbor colors from previous iter
+        color_multiset = [[] for i in range(n_nodes)]
+        for u in range(n_nodes):
+            for v in adj[u]:
+                color_multiset[u].append(prev_colors[v])
+            color_multiset[u].sort()
+            color_multiset[u].prepend(0,prev_colors[u])
+            # convert list of ints to string
+            color_multiset[u] = ''.join(map(str, color_multiset[u]))
+        
+        
+        curr_colors = [0]*n_nodes
+        indices_sort = np.argsort(color_multiset)
+        prev = color_multiset[indices_sort[0]]
+        prev_ind = indices_sort[0]
+        for ind in indices_sort:
+            if color_multiset[ind] == prev:
+                curr_colors[ind] = curr_colors[prev_ind]
+            else:
+                curr_colors[ind] = curr_colors[prev_ind] + 1
+                prev = color_multiset[ind]
+                prev_ind = ind 
+         
+        curr_counts = get_counts(curr_colors)
+        total_counts.append(curr_counts)
+        prev_colors = copy.deepcopy(init_colors)
+        
+    total_counts = np.array(total_counts)
+    
+    return total_counts.T
+        
+    
+        
+    
+    
+
 
 
 # factory methods for getting the components for training
@@ -252,7 +383,7 @@ def make_model(args):
     model_dataset = "molpcba" if args.transfer_learn else args.dataset
     if args.model == "perceiver":
         model = MoleculePerceiverModel(atom_emb_dim=args.atom_emb_dim, bond_emb_dim=args.bond_emb_dim,
-                                       node_preprocess_dim=args.k_eigs,
+                                       node_preprocess_dim=args.k_eigs + args.H,
                                        p_depth=args.depth, p_latent_trsnfmr_depth=args.latent_transformer_depth,
                                        p_num_latents=args.num_latents, p_latent_dim=args.latent_dim,
                                        p_cross_heads=args.cross_heads, p_latent_heads=args.latent_heads,
@@ -265,7 +396,7 @@ def make_model(args):
                                        classifier_transformer_layers=args.classifier_transformer_layers)
     elif args.model == "transformer":
         model = MoleculeTransformerEncoderModel(atom_emb_dim=args.atom_emb_dim, bond_emb_dim=args.bond_emb_dim,
-                                                node_preprocess_dim=args.k_eigs,
+                                                node_preprocess_dim=args.k_eigs + args.H,
                                                 n_layers=args.latent_transformer_depth, n_heads=args.latent_heads,
                                                 head_dim=args.latent_dim_head, pf_dim=None,
                                                 attn_dropout=args.attn_dropout, ff_dropout=args.ff_dropout,
@@ -374,24 +505,14 @@ def make_dataloaders(args):
         print("Original data split")
         split_idx = dataset.get_idx_split()
 
-    if args.dataset == "molpcba" and args.remove_hiv_overlap:
-        print("Removing overlapping HIV test data from PCBA train data")
-
-        df_pcba = pd.read_csv('./dataset/ogbg_molpcba/mapping/mol.csv.gz', compression='gzip')
-        pcba_train_idx = pd.read_csv('./dataset/ogbg_molpcba/split/scaffold/train.csv.gz', compression='gzip')
-        hiv_dataset = GraphPropPredDataset(name=f"ogbg-molhiv", root='dataset/')
-        df_hiv = pd.read_csv('./dataset/ogbg_molhiv/mapping/mol.csv.gz', compression='gzip')
-        hiv_test_idx = pd.read_csv('./dataset/ogbg_molhiv/split/scaffold/test.csv.gz', compression='gzip')
-
-        pcba_train = df_pcba.iloc[train] # use train indices from earlier data split
-        hiv_test = df_hiv.iloc[hiv_test_idx['0']]
-
-        overlapping_indices = pcba_train[pcba_train['smiles'].isin(hiv_test['smiles'])].index.values
-        indices_to_remove = np.where(np.isin(split_idx['train'], overlapping_indices))
-        pcba_train_overlap_removed = np.delete(split_idx['train'], indices_to_remove)
-        split_idx["train"] = pcba_train_overlap_removed
-
-    graph_preprocess_fns = [LPE(args.k_eigs)] if args.k_eigs > 0 else []
+    graph_preprocess_fns = []
+    if args.k_eigs > 0 and args.H > 0:
+        graph_preprocess_fns = [LPE(args.k_eigs), WL(args.H)]
+    elif args.k_eigs > 0 and args.H == 0:
+        graph_preprocess_fns = [LPE(args.k_eigs)]
+    elif args.k_eigs == 0 and args.H > 0:
+        graph_preprocess_fns = [WL(args.H)]
+    
     train_data = GraphDataset([dataset[i] for i in split_idx["train"]], preprocess=graph_preprocess_fns)
     valid_data = GraphDataset([dataset[i] for i in split_idx["valid"]], preprocess=graph_preprocess_fns)
     test_data = GraphDataset([dataset[i] for i in split_idx["test"]], preprocess=graph_preprocess_fns)
@@ -401,4 +522,3 @@ def make_dataloaders(args):
     valid_loader = DataLoader(valid_data, batch_size=args.batch_size, shuffle=True, collate_fn=collate_fn)
     test_loader = DataLoader(test_data, batch_size=args.batch_size, shuffle=True, collate_fn=collate_fn)
     return train_loader, valid_loader, test_loader
-
