@@ -263,8 +263,14 @@ class WL(object):
         # keys: ['edge_index', 'edge_feat', 'node_feat', 'num_nodes']
         wl_kernel = get_wl_kernel(dictionary['num_nodes'], dictionary['edge_index'], self.H)
 
-        new_dictionary = copy.deepcopy(dictionary)
-        new_dictionary['wl_kernel_preprocess'] = wl_kernel
+        new_dictionary = dict()
+        for key in dictionary:
+            new_dictionary[key] = dictionary[key]
+            
+        if 'node_preprocess_feat' not in new_dictionary:
+            new_dictionary['node_preprocess_feat'] = wl_kernel
+        else:
+            new_dictionary['node_preprocess_feat'] = np.concatenate((new_dictionary['node_preprocess_feat'], wl_kernel), axis=1)
 
         return (new_dictionary, y)
     
@@ -337,14 +343,14 @@ def get_wl_kernel(n_nodes, edges, H):
     total_counts.append(init_counts)
     prev_colors = copy.deepcopy(init_colors)
     
-    for iteration in range(H):
+    for iteration in range(1, H):
         # color_multiset will hold multiset of neighbor colors from previous iter
         color_multiset = [[] for i in range(n_nodes)]
         for u in range(n_nodes):
             for v in adj[u]:
                 color_multiset[u].append(prev_colors[v])
             color_multiset[u].sort()
-            color_multiset[u].prepend(0,prev_colors[u])
+            color_multiset[u].insert(0,prev_colors[u])
             # convert list of ints to string
             color_multiset[u] = ''.join(map(str, color_multiset[u]))
         
