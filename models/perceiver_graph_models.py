@@ -128,7 +128,8 @@ class MoleculePerceiverModel(nn.Module):
 
         if self.node_edge_cross_attn:
             latent_node_feat = self.latent_atom_encode(node_features)
-            x = self.perceiver(x, mask=X_mask[1].to(device), latent_input=latent_node_feat)
+            x = self.perceiver(x, mask=X_mask[1].to(device), latent_input=latent_node_feat,
+                               latent_extratokens_mask=X_mask[0].to(device))
             x = x[:, :self.latent_dim, :]
         else:
             x = self.perceiver(x, mask=X_mask[1].to(device))

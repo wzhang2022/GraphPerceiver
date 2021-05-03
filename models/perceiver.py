@@ -165,6 +165,7 @@ class Perceiver(nn.Module):
         super().__init__()
 
         self.latents = nn.Parameter(torch.randn(num_latents, latent_dim))
+        self.num_latents = num_latents
 
         get_cross_attn = lambda: PreNorm(latent_dim,
                                          Attention(latent_dim, input_dim, heads=cross_heads, dim_head=cross_dim_head,
@@ -191,20 +192,32 @@ class Perceiver(nn.Module):
                 get_latent_trnsfmr(**cache_args),
             ]))
 
-    def forward(self, data, mask=None, latent_input=None):
-        b = data.shape[0]
+    def forward(self, data, mask=None, latent_input=None, latent_extratokens_mask=None):
+        bs, num_kv, _ = data.shape
+
+        assert mask.shape == (bs, num_kv)
 
         data = rearrange(data, 'b ... d -> b (...) d')
 
-        x = repeat(self.latents, 'n d -> b n d', b=b)
-        if exists(latent_input):
+        x = repeat(self.latents, 'n d -> b n d', b=bs)
+
+        using_latent = exists(latent_input)
+        latent_transfrmr_mask = None
+        if using_latent:
+            # check that number of query tokens matches with mask
+            assert latent_extratokens_mask.shape[1] == latent_input.shape[1]
             x = torch.cat([x, latent_input], dim=1)
+            # combine masks to get new mask of shape (bs, num_latents+num_latent_inputs, num_kv)
+            latent_value_mask = torch.ones((bs, self.num_latents), dtype=bool, device=data.device)
+            query_mask = torch.cat([latent_value_mask, latent_extratokens_mask], dim=1)
+            mask = torch.einsum("bi,bj->bij", query_mask, mask)
+            latent_transfrmr_mask = torch.einsum("bi,bj->bij", query_mask, query_mask)
 
         for cross_attn, cross_ff, latent_trnsfmr in self.layers:
-            x = cross_attn(x, context=data, mask=mask) + x
+            x = cross_attn(x, context=data, mask=mask, mask_kv_only=not using_latent) + x
             x = cross_ff(x) + x
             for latent_self_attn, latent_ff in latent_trnsfmr:
-                x = latent_self_attn(x) + x
+                x = latent_self_attn(x, mask=latent_transfrmr_mask, mask_kv_only=not using_latent) + x
                 x = latent_ff(x) + x
 
         return x
