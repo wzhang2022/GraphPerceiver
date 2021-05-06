@@ -35,7 +35,8 @@ def parse_args():
     # experiment details
     parser.add_argument("--model", type=str, required=True)
     parser.add_argument("--save_file", type=str, required=True)
-    parser.add_argument("--run_name", required=True)
+    parser.add_argument("--run_name")
+    parser.set_defaults(run_name=None)
     parser.add_argument("--device", type=str, default="cuda")
     parser.add_argument("--dataset", type=str, required=True)  # molhiv, molpcba
     parser.add_argument("--shuffle_split", dest="shuffle_split", action="store_true")
