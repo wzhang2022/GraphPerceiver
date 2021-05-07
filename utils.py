@@ -282,7 +282,8 @@ def make_model(args):
     if args.transfer_learn:
         model = PCBAtoHIVPerceiverTransferModel(model, 
                                                 layers_to_unfreeze=args.layers_to_unfreeze, 
-                                                epochs_before_unfreeze = args.n_epochs - args.unfrozen_training_epochs)
+                                                epochs_before_unfreeze = args.n_epochs - args.unfrozen_training_epochs,
+                                                lr_for_unfrozen = args.lr_for_unfrozen)
 
     return model
 

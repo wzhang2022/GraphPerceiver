@@ -140,7 +140,7 @@ class MoleculePerceiverModel(nn.Module):
 
 
 class PCBAtoHIVPerceiverTransferModel(nn.Module):
-    def __init__(self, pretrained_model: MoleculePerceiverModel, layers_to_unfreeze, epochs_before_unfreeze):
+    def __init__(self, pretrained_model: MoleculePerceiverModel, layers_to_unfreeze, epochs_before_unfreeze, lr_for_unfrozen):
         super(PCBAtoHIVPerceiverTransferModel, self).__init__()
 
         # freeze pretrained_model parameters
@@ -155,6 +155,7 @@ class PCBAtoHIVPerceiverTransferModel(nn.Module):
         self.perceiver = pretrained_model.perceiver
         self.latent_dim = pretrained_model.latent_dim
         self.pretrained_model = pretrained_model
+        self.lr_for_unfrozen = lr_for_unfrozen
 
         # make trainable final layers
         self.to_logits = nn.Sequential(
@@ -164,15 +165,12 @@ class PCBAtoHIVPerceiverTransferModel(nn.Module):
             nn.Linear(self.latent_dim, 2)
         )
 
-    def unfreeze_layers(self, optimizer, lr_for_unfrozen = .000001):
+    def unfreeze_layers(self, optimizer):
         for params in list(self.pretrained_model.parameters())[-self.layers_to_unfreeze:]:
             params.requires_grad = True
 
-        # keep getting ValueError: some parameters appear in more than one parameter group ????
-        optimizer.add_param_group({'params': filter(lambda x: x.requires_grad, self.pretrained_model.parameters()),
-                                  'lr': lr_for_unfrozen})
-        # for g in optimizer.param_groups:
-        #     g['lr'] = lr_for_unfrozen
+        for g in optimizer.param_groups:
+            g['lr'] = self.lr_for_unfrozen
 
     def forward(self, batch_X, X_mask, device):
         node_features, node_preprocess_feat, edge_index, edge_features = [X.to(device) for X in batch_X]
