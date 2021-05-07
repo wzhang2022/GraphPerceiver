@@ -35,7 +35,8 @@ def parse_args():
     # experiment details
     parser.add_argument("--model", type=str, required=True)
     parser.add_argument("--save_file", type=str, required=True)
-    parser.add_argument("--run_name", required=True)
+    parser.add_argument("--run_name")
+    parser.set_defaults(run_name=None)
     parser.add_argument("--device", type=str, default="cuda")
     parser.add_argument("--dataset", type=str, required=True)  # molhiv, molpcba
     parser.add_argument("--shuffle_split", dest="shuffle_split", action="store_true")
@@ -59,10 +60,14 @@ def parse_args():
     parser.add_argument("--latent_dim_head", type=int, default=32)
     parser.add_argument("--attn_dropout", type=float, default=0.0)
     parser.add_argument("--ff_dropout", type=float, default=0.0)
-    parser.add_argument("--weight_tie_layers", dest="weight_tie_layers", action="store_true")
-    parser.set_defaults(weight_tie_layers=False)
-    parser.add_argument("--node_edge_cross_attn", dest="node_edge_cross_attn", action="store_true")
-    parser.set_defaults(node_edge_cross_attn=False)
+#     parser.add_argument("--weight_tie_layers", dest="weight_tie_layers", action="store_true")
+#     parser.set_defaults(weight_tie_layers=False)
+#     parser.add_argument("--node_edge_cross_attn", dest="node_edge_cross_attn", action="store_true")
+#     parser.set_defaults(node_edge_cross_attn=False)
+
+    parser.add_argument("--weight_tie_layers", default=False, type=lambda s: s.lower() == 'true')
+    parser.add_argument("--node_edge_cross_attn", default=False, type=lambda s: s.lower() == 'true')
+    
     parser.add_argument("--nystrom", dest="nystrom", action="store_true")
     parser.set_defaults(nystrom=False)
     parser.add_argument("--landmarks", type=int, default=32)
@@ -473,6 +478,8 @@ def make_scheduler(args, optimizer):
 
     gamma = args.lr_decay  # not the same as Adam_weight_decay; when Adam_weight_decay > 0 we should use ExponentialLR(., 1)
     if scheduler_type == 'exponential':
+        if args.Adam_weight_decay > 0 and args.optimizer in ['Adam', 'AdamW', 'AMSGrad']:
+            return torch.optim.lr_scheduler.ExponentialLR(optimizer, 1)
         return torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma)
 
     elif scheduler_type == 'multistep':

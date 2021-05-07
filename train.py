@@ -119,7 +119,8 @@ if __name__ == "__main__":
     print(f'Preprocessing time: {pp_mins}m {pp_secs}s')
     
     with wandb.init(project="GraphPerceiver", entity="wzhang2022", config=args):
-        wandb.run.name = args.run_name
+        if args.run_name:
+            wandb.run.name = args.run_name
         model = make_model(args).to(device)
 
         print(f"Model has {count_parameters(model)} parameters")
