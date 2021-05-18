@@ -69,6 +69,7 @@ class MoleculeDeepPerceiverModel(nn.Module):
         self.bond_encoder = PaddedBondEncoder(emb_dim=bond_emb_dim)
         self.latent_atom_encode = PaddedAtomEncoder(emb_dim=p_latent_dim)
 
+
 class MoleculePerceiverModel(nn.Module):
     def __init__(self, atom_emb_dim, bond_emb_dim, node_preprocess_dim,
                  p_depth, p_latent_trsnfmr_depth, p_num_latents, p_latent_dim, p_cross_heads, p_latent_heads,
@@ -88,7 +89,6 @@ class MoleculePerceiverModel(nn.Module):
                 input_dim_1=atom_emb_dim,
                 input_dim_2=2 * atom_emb_dim + 2 * node_preprocess_dim + bond_emb_dim,
                 depth=p_depth,
-                latent_dim=p_latent_dim,
                 heads=p_latent_heads,
                 latent_dim_head=p_latent_dim_head,
                 attn_dropout=p_attn_dropout,

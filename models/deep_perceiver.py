@@ -29,7 +29,6 @@ class DeepPerceiver(nn.Module):
             input_dim_1,
             input_dim_2,
             depth,
-            latent_dim=512,
             heads=8,
             latent_dim_head=64,
             attn_dropout=0.,
@@ -39,9 +38,9 @@ class DeepPerceiver(nn.Module):
         self.input_dim_1 = input_dim_1
         self.input_dim_2 = input_dim_2
         get_transformer_block_1 = lambda: TransformerBlock(input_dim_1, input_dim_2, heads, latent_dim_head,
-                                                           latent_dim * 4, attn_dropout, ff_dropout)
+                                                           input_dim_1 * 4, attn_dropout, ff_dropout)
         get_transformer_block_2 = lambda: TransformerBlock(input_dim_2, input_dim_1, heads, latent_dim_head,
-                                                           latent_dim * 4, attn_dropout, ff_dropout)
+                                                           input_dim_2 * 4, attn_dropout, ff_dropout)
         get_transformer_block_1, get_transformer_block_2 = map(cache_fn, (get_transformer_block_1,
                                                                           get_transformer_block_2))
         self.layers = nn.ModuleList([])
