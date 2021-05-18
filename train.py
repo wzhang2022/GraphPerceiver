@@ -35,7 +35,7 @@ def run_epoch(model, iterator, optimizer, criterion, device, evaluator, mode, ar
         if (mode == "train") and args.num_flag_steps > 0:
             # forward pass for FLAG training
             node_features, node_preprocess_feat, edge_index, edge_features = batch_X
-            pert = torch.FloatTensor(node_features.shape[0], node_features.shape[1], args.atom_emb_dim + args.k_eigs)
+            pert = torch.FloatTensor(node_features.shape[0], node_features.shape[1], args.atom_emb_dim + args.k_eigs + args.H)
             pert = pert.to(device)
             pert.uniform_(-args.flag_step_size, args.flag_step_size)
             pert.requires_grad = True
