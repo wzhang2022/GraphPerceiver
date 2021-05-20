@@ -27,10 +27,16 @@ def dense_to_sparse(node_features, edge_index, edge_features, node_mask, edge_ma
 def sparse_to_dense_batch(x, edge_index, edge_features, batch):
     node_features, node_mask = to_dense_batch(x, batch=batch)
     edge_batch = batch[edge_index[0]]
-    edge_index_shifted, edge_mask = to_dense_batch(edge_index.transpose(0, 1), edge_batch)
-    edge_features, edge_mask = to_dense_batch(edge_features, edge_batch)
 
-    batch_size = batch.max().item() + 1
+    edge_index_shifted, edge_mask = to_dense_batch(edge_index.transpose(0, 1), batch=edge_batch)
+    edge_features, _ = to_dense_batch(edge_features, batch=edge_batch)
+    batch_size, edge_batch_size = batch.max().item() + 1, edge_batch.max().item() + 1
+    if edge_batch_size < batch_size:
+        # Error handling if last graphs in batch have no edges
+        edge_index_shifted= F.pad(edge_index_shifted, pad=(0, 0, 0, 0, 0, batch_size - edge_batch_size))
+        edge_mask = F.pad(edge_mask, pad=(0, 0, 0, batch_size - edge_batch_size))
+        edge_features = F.pad(edge_features, pad=(0, 0, 0, 0, 0, batch_size - edge_batch_size))
+
     one = batch.new_ones(batch.size(0))
     num_nodes = scatter(one, batch, dim=0, dim_size=batch_size, reduce='add')
     cum_nodes = torch.cat([batch.new_zeros(1), num_nodes.cumsum(dim=0)])[:-1]
