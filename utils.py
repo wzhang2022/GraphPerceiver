@@ -419,7 +419,7 @@ def make_model(args):
                                                 num_outputs=num_outputs_dict[model_dataset],
                                                 nystrom=args.nystrom, n_landmarks=args.landmarks)
     elif args.model == "gnn":
-        model = MoleculeGNNModel(num_tasks=num_outputs_dict[model_dataset])
+        model = MoleculeGNNModel(num_tasks=num_outputs_dict[model_dataset], gnn_type="gnn_attn")
     else:
         raise Exception("invalid model type")
     if args.load is not None:

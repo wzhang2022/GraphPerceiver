@@ -1,21 +1,10 @@
 import torch
 import torch.nn as nn
-from .gnn import GNN
+from .gnn import GNN_node, dense_to_sparse
 from einops import rearrange
-
-
-def dense_to_sparse(node_features, edge_index, edge_features, node_mask, edge_mask):
-    bs, num_nodes, _ = node_features.shape
-    x = node_features[node_mask]
-    edge_attr = edge_features[edge_mask]
-    batch = rearrange(torch.arange(bs).repeat_interleave(num_nodes), "(b n) -> b n", b=bs)[node_mask]
-    batch = batch.to(x.device)
-    num_nodes_per_batch = torch.sum(node_mask, dim=1)
-    index_shift = torch.cumsum(num_nodes_per_batch, dim=0).roll(1)
-    index_shift[0] = 0
-    edge_index = (edge_index + index_shift[..., None, None])[edge_mask]
-    edge_index = torch.transpose(edge_index, 0, 1)
-    return x, edge_index, edge_attr, batch
+from torch_geometric.nn import global_add_pool, global_mean_pool, global_max_pool, GlobalAttention, Set2Set
+import torch.nn.functional as F
+from ogb.graphproppred.mol_encoder import AtomEncoder, BondEncoder
 
 
 
@@ -33,18 +22,47 @@ class MoleculeGNNModel(nn.Module):
             graph_pooling="mean"
     ):
         super(MoleculeGNNModel, self).__init__()
-        self.gnn = GNN(
-            num_tasks,
-            num_layer=num_layer,
-            emb_dim=emb_dim,
-            gnn_type=gnn_type,
-            virtual_node=virtual_node,
-            residual=residual,
-            drop_ratio=drop_ratio,
+        self.num_layer = num_layer
+        self.drop_ratio = drop_ratio
+        self.JK = JK
+        self.emb_dim = emb_dim
+        self.num_tasks = num_tasks
+        self.graph_pooling = graph_pooling
+
+        if self.num_layer < 2:
+            raise ValueError("Number of GNN layers must be greater than 1.")
+
+        self.atom_encoder = AtomEncoder(emb_dim)
+        self.bond_encoder = BondEncoder(emb_dim)
+
+        self.gnn_node = GNN_node(
+            num_layer,
+            emb_dim,
             JK=JK,
-            graph_pooling=graph_pooling
+            drop_ratio=drop_ratio,
+            residual=residual,
+            gnn_type=gnn_type,
+            virtual_node=virtual_node
         )
 
+        # Pooling function to generate whole-graph embeddings
+        if self.graph_pooling == "sum":
+            self.pool = global_add_pool
+        elif self.graph_pooling == "mean":
+            self.pool = global_mean_pool
+        elif self.graph_pooling == "max":
+            self.pool = global_max_pool
+        elif self.graph_pooling == "attention":
+            self.pool = GlobalAttention(gate_nn = torch.nn.Sequential(torch.nn.Linear(emb_dim, 2*emb_dim), torch.nn.BatchNorm1d(2*emb_dim), torch.nn.ReLU(), torch.nn.Linear(2*emb_dim, 1)))
+        elif self.graph_pooling == "set2set":
+            self.pool = Set2Set(emb_dim, processing_steps = 2)
+        else:
+            raise ValueError("Invalid graph pooling type.")
+
+        if graph_pooling == "set2set":
+            self.graph_pred_linear = torch.nn.Linear(2*self.emb_dim, self.num_tasks)
+        else:
+            self.graph_pred_linear = torch.nn.Linear(self.emb_dim, self.num_tasks)
 
     def forward(self, batch_X, X_mask, device):
         """
@@ -56,4 +74,8 @@ class MoleculeGNNModel(nn.Module):
         node_features, node_preprocess_feat, edge_index, edge_features = [X.to(device) for X in batch_X]
         node_mask, edge_mask = [mask.to(device) for mask in X_mask]
         x,  edge_index, edge_attr, batch = dense_to_sparse(node_features, edge_index, edge_features, node_mask, edge_mask)
-        return self.gnn(x, edge_index, edge_attr, batch)
+        x = self.atom_encoder(x)
+        edge_embedding = self.bond_encoder(edge_attr)
+        h_node = self.gnn_node(x, edge_index, edge_embedding, batch)
+        h_graph = self.pool(h_node, batch)
+        return self.graph_pred_linear(h_graph)
