@@ -18,6 +18,7 @@ from torch.utils.data import DataLoader
 
 from models.perceiver_graph_models import MoleculePerceiverModel, MoleculeTransformerEncoderModel,\
     PCBAtoHIVPerceiverTransferModel
+from models.gnn_models import MoleculeGNNModel
 from models.loss_functions import CombinedCEandAUCLoss, SoftAUC, MultitaskCrossEntropyLoss
 
 
@@ -417,6 +418,8 @@ def make_model(args):
                                                 attn_dropout=args.attn_dropout, ff_dropout=args.ff_dropout,
                                                 num_outputs=num_outputs_dict[model_dataset],
                                                 nystrom=args.nystrom, n_landmarks=args.landmarks)
+    elif args.model == "gnn":
+        model = MoleculeGNNModel(num_tasks=num_outputs_dict[model_dataset])
     else:
         raise Exception("invalid model type")
     if args.load is not None:

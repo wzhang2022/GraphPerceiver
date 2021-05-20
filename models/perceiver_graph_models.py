@@ -6,6 +6,7 @@ from models.nystromformer import Nystromformer
 from models.padded_mol_encoder import PaddedAtomEncoder, PaddedBondEncoder
 from einops import rearrange
 from einops.layers.torch import Reduce
+from torch_geometric.utils import to_dense_batch
 
 
 def get_node_feature_pairs(edge_index, node_encodings, device):
@@ -56,18 +57,6 @@ class HIVModelNodeOnly(nn.Module):
         x = self.atom_encoder(node_features.to(device))
         x = self.perceiver(x, mask=X_mask[0].to(device))
         return x
-
-
-class MoleculeDeepPerceiverModel(nn.Module):
-    def __init__(self, atom_emb_dim, bond_emb_dim, node_preprocess_dim,
-                 p_depth, p_latent_trsnfmr_depth, p_num_latents, p_latent_dim, p_cross_heads, p_latent_heads,
-                 p_cross_dim_head, p_latent_dim_head, p_attn_dropout, p_ff_dropout, p_weight_tie_layers,
-                 p_node_edge_cross_attn, p_num_outputs, connection_bias, multi_classification, num_classifiers,
-                 classifier_transformer_layers):
-        super(MoleculeDeepPerceiverModel, self).__init__()
-        self.atom_encoder = PaddedAtomEncoder(emb_dim=atom_emb_dim)
-        self.bond_encoder = PaddedBondEncoder(emb_dim=bond_emb_dim)
-        self.latent_atom_encode = PaddedAtomEncoder(emb_dim=p_latent_dim)
 
 
 class MoleculePerceiverModel(nn.Module):
