@@ -1,10 +1,12 @@
 import torch
 import torch.nn as nn
 from models.perceiver import Perceiver, TransformerEncoder
+from models.deep_perceiver import DeepPerceiver
 from models.nystromformer import Nystromformer
 from models.padded_mol_encoder import PaddedAtomEncoder, PaddedBondEncoder
 from einops import rearrange
 from einops.layers.torch import Reduce
+from torch_geometric.utils import to_dense_batch
 
 
 def get_node_feature_pairs(edge_index, node_encodings, device):
@@ -21,6 +23,14 @@ def get_node_feature_pairs(edge_index, node_encodings, device):
     x_1 = rearrange(flat_x_1, "(b m) f -> b m f", b=bs)
     x_2 = rearrange(flat_x_2, "(b m) f -> b m f", b=bs)
     return x_1, x_2
+
+
+def get_node_edge_bias_mask(edge_index, edge_mask, num_nodes):
+    bs, num_edges, _ = edge_index.shape
+    mask = torch.zeros((bs, num_edges, num_nodes), dtype=bool, device=edge_index.device)
+    mask.scatter_(2, edge_index, 1)
+    mask *= edge_mask.unsqueeze(2).to(mask.device)
+    return rearrange(mask, "b e n -> b n e")
 
 
 class HIVModelNodeOnly(nn.Module):
@@ -54,27 +64,42 @@ class MoleculePerceiverModel(nn.Module):
                  p_depth, p_latent_trsnfmr_depth, p_num_latents, p_latent_dim, p_cross_heads, p_latent_heads,
                  p_cross_dim_head, p_latent_dim_head, p_attn_dropout, p_ff_dropout, p_weight_tie_layers,
                  p_node_edge_cross_attn, p_num_outputs, connection_bias, multi_classification, num_classifiers,
-                 classifier_transformer_layers):
+                 classifier_transformer_layers, deepperceiver):
         super(MoleculePerceiverModel, self).__init__()
         self.atom_encoder = PaddedAtomEncoder(emb_dim=atom_emb_dim)
         self.bond_encoder = PaddedBondEncoder(emb_dim=bond_emb_dim)
         self.latent_atom_encode = PaddedAtomEncoder(emb_dim=p_latent_dim)
         self.latent_dim = p_latent_dim
         self.node_edge_cross_attn = p_node_edge_cross_attn
-        self.perceiver = Perceiver(
-            input_dim=2 * atom_emb_dim + 2 * node_preprocess_dim + bond_emb_dim,
-            depth=p_depth,
-            latent_trnsfmr_depth=p_latent_trsnfmr_depth,
-            num_latents=p_num_latents,
-            latent_dim=p_latent_dim,
-            cross_heads=p_cross_heads,
-            latent_heads=p_latent_heads,
-            cross_dim_head=p_cross_dim_head,
-            latent_dim_head=p_latent_dim_head,
-            attn_dropout=p_attn_dropout,
-            ff_dropout=p_ff_dropout,
-            weight_tie_layers=p_weight_tie_layers
-        )
+
+        self.deepperceiver = deepperceiver
+        if deepperceiver:
+            self.perceiver = DeepPerceiver(
+                input_dim_1=atom_emb_dim,
+                input_dim_2=2 * atom_emb_dim + 2 * node_preprocess_dim + bond_emb_dim,
+                depth=p_depth,
+                heads=p_latent_heads,
+                latent_dim_head=p_latent_dim_head,
+                attn_dropout=p_attn_dropout,
+                ff_dropout=p_ff_dropout,
+                weight_tie_layers=p_weight_tie_layers
+            )
+            self.proj = nn.Linear(atom_emb_dim, p_latent_dim)
+        else:
+            self.perceiver = Perceiver(
+                input_dim=2 * atom_emb_dim + 2 * node_preprocess_dim + bond_emb_dim,
+                depth=p_depth,
+                latent_trnsfmr_depth=p_latent_trsnfmr_depth,
+                num_latents=p_num_latents,
+                latent_dim=p_latent_dim,
+                cross_heads=p_cross_heads,
+                latent_heads=p_latent_heads,
+                cross_dim_head=p_cross_dim_head,
+                latent_dim_head=p_latent_dim_head,
+                attn_dropout=p_attn_dropout,
+                ff_dropout=p_ff_dropout,
+                weight_tie_layers=p_weight_tie_layers
+            )
 
         self.to_logits = nn.Sequential(
             nn.LayerNorm(p_latent_dim),
@@ -83,7 +108,9 @@ class MoleculePerceiverModel(nn.Module):
 
         self.connection_bias = connection_bias
         if connection_bias:
-            self.connection_bias_weight = None
+            self.register_parameter("connection_bias_weights", nn.Parameter(torch.randn(p_depth) + 1))
+        else:
+            self.connection_bias_weights=None
 
         self.multi_classification = multi_classification
         if multi_classification:
@@ -126,10 +153,16 @@ class MoleculePerceiverModel(nn.Module):
         x_3 = self.bond_encoder(edge_features)
         x = torch.cat([x_1, x_2, x_3], dim=2)
 
-        if self.node_edge_cross_attn:
+        if self.deepperceiver:
+            y = self.atom_encoder(node_features)
+            x = self.perceiver(y, x, X_mask[0].to(device), X_mask[1].to(device))
+            x = self.proj(x)
+        elif self.node_edge_cross_attn:
             latent_node_feat = self.latent_atom_encode(node_features)
+            attn_bias_mask = get_node_edge_bias_mask(edge_index, X_mask[1], node_features.shape[1])
             x = self.perceiver(x, mask=X_mask[1].to(device), latent_input=latent_node_feat,
-                               latent_extratokens_mask=X_mask[0].to(device))
+                               latent_extratokens_mask=X_mask[0].to(device), extratok_attn_bias_mask=attn_bias_mask,
+                               bias_weights=self.connection_bias_weights)
             x = x[:, :self.latent_dim, :]
         else:
             x = self.perceiver(x, mask=X_mask[1].to(device))

@@ -1,122 +1,7 @@
-from functools import wraps
-
 import torch
-from torch import nn, einsum
-import torch.nn.functional as F
-
+import torch.nn as nn
+from .helpers import PreNorm, Attention, FeedForward, exists, default, cache_fn
 from einops import rearrange, repeat
-
-
-# helpers
-
-def exists(val):
-    return val is not None
-
-
-def default(val, d):
-    return val if exists(val) else d
-
-
-def cache_fn(f):
-    cache = None
-
-    @wraps(f)
-    def cached_fn(*args, _cache=True, **kwargs):
-        if not _cache:
-            return f(*args, **kwargs)
-        nonlocal cache
-        if cache is not None:
-            return cache
-        cache = f(*args, **kwargs)
-        return cache
-
-    return cached_fn
-
-
-# helper classes
-
-class PreNorm(nn.Module):
-    def __init__(self, dim, fn, context_dim=None):
-        super().__init__()
-        self.fn = fn
-        self.norm = nn.LayerNorm(dim)
-        self.norm_context = nn.LayerNorm(context_dim) if exists(context_dim) else None
-
-    def forward(self, x, **kwargs):
-        x = self.norm(x)
-        if exists(self.norm_context):
-            context = kwargs['context']
-            normed_context = self.norm_context(context)
-            kwargs.update(context=normed_context)
-        return self.fn(x, **kwargs)
-
-
-class GEGLU(nn.Module):
-    def forward(self, x):
-        x, gates = x.chunk(2, dim=-1)
-        return x * F.gelu(gates)
-
-
-class FeedForward(nn.Module):
-    def __init__(self, dim, hid_dim=None, dropout=0.):
-        super().__init__()
-        hid_dim = default(hid_dim, 4 * dim)
-        self.net = nn.Sequential(
-            nn.Linear(dim, hid_dim * 2),
-            GEGLU(),
-            nn.Dropout(dropout),
-            nn.Linear(hid_dim, dim)
-        )
-
-    def forward(self, x):
-        return self.net(x)
-
-
-class Attention(nn.Module):
-    def __init__(self, query_dim, context_dim=None, heads=8, dim_head=64, dropout=0.):
-        super().__init__()
-        inner_dim = dim_head * heads
-        context_dim = default(context_dim, query_dim)
-
-        self.scale = dim_head ** -0.5
-        self.heads = heads
-
-        self.to_q = nn.Linear(query_dim, inner_dim, bias=False)
-        self.to_kv = nn.Linear(context_dim, inner_dim * 2, bias=False)
-
-        self.to_out = nn.Sequential(
-            nn.Linear(inner_dim, query_dim),
-            nn.Dropout(dropout)
-        )
-
-    def forward(self, x, context=None, mask=None, mask_kv_only=True):
-        h = self.heads
-        q = self.to_q(x)
-        context = default(context, x)
-        bs, num_q, _ = x.shape
-        _, num_kv, _ = context.shape
-
-        k, v = self.to_kv(context).chunk(2, dim=-1)
-
-        q, k, v = map(lambda t: rearrange(t, 'b n (h d) -> (b h) n d', h=h), (q, k, v))
-
-        sim = einsum('b i d, b j d -> b i j', q, k) * self.scale
-
-        if exists(mask) and mask_kv_only:
-            assert mask.shape == (bs, num_kv)
-            mask = repeat(mask, 'b j -> (b h) () j', h=h)
-            sim.masked_fill_(~mask, -torch.finfo(sim.dtype).max)
-        elif exists(mask) and (not mask_kv_only):
-            assert mask.shape == (bs, num_q, num_kv)
-            mask = repeat(mask, 'b i j -> (b h) i j', h=h)
-            sim.masked_fill_(~mask, -torch.finfo(sim.dtype).max)
-
-        # attention, what we cannot get enough of
-        attn = sim.softmax(dim=-1)
-
-        out = einsum('b i j, b j d -> b i d', attn, v)
-        out = rearrange(out, '(b h) n d -> b n (h d)', h=h)
-        return self.to_out(out)
 
 
 class TransformerEncoder(nn.Module):
@@ -142,6 +27,7 @@ class TransformerEncoder(nn.Module):
             x = self_attn(x, mask=mask, mask_kv_only=False) + x
             x = positionwise_ff(x) + x
         return x
+
 
 # main class
 
@@ -192,7 +78,8 @@ class Perceiver(nn.Module):
                 get_latent_trnsfmr(**cache_args),
             ]))
 
-    def forward(self, data, mask=None, latent_input=None, latent_extratokens_mask=None):
+    def forward(self, data, mask=None, latent_input=None, latent_extratokens_mask=None, extratok_attn_bias_mask=None,
+                bias_weights=None):
         bs, num_kv, _ = data.shape
 
         assert mask.shape == (bs, num_kv)
@@ -203,18 +90,26 @@ class Perceiver(nn.Module):
 
         using_latent = exists(latent_input)
         latent_transfrmr_mask = None
+        attn_bias_mask = None
         if using_latent:
             # check that number of query tokens matches with mask
             assert latent_extratokens_mask.shape[1] == latent_input.shape[1]
             x = torch.cat([x, latent_input], dim=1)
+
             # combine masks to get new mask of shape (bs, num_latents+num_latent_inputs, num_kv)
             latent_value_mask = torch.ones((bs, self.num_latents), dtype=bool, device=data.device)
             query_mask = torch.cat([latent_value_mask, latent_extratokens_mask], dim=1)
+
+            latent_value_bias_mask = torch.zeros((bs, self.num_latents, num_kv), dtype=bool, device=data.device)
+            attn_bias_mask = torch.cat([latent_value_bias_mask, extratok_attn_bias_mask], dim=1)
             mask = torch.einsum("bi,bj->bij", query_mask, mask)
             latent_transfrmr_mask = torch.einsum("bi,bj->bij", query_mask, query_mask)
 
-        for cross_attn, cross_ff, latent_trnsfmr in self.layers:
-            x = cross_attn(x, context=data, mask=mask, mask_kv_only=not using_latent) + x
+        for i, (cross_attn, cross_ff, latent_trnsfmr) in enumerate(self.layers):
+            attn_bias = None
+            if exists(bias_weights):
+                attn_bias = attn_bias_mask * bias_weights[i]
+            x = cross_attn(x, context=data, mask=mask, mask_kv_only=not using_latent, sim_bias=attn_bias) + x
             x = cross_ff(x) + x
             for latent_self_attn, latent_ff in latent_trnsfmr:
                 x = latent_self_attn(x, mask=latent_transfrmr_mask, mask_kv_only=not using_latent) + x

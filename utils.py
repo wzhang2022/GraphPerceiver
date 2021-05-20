@@ -18,6 +18,7 @@ from torch.utils.data import DataLoader
 
 from models.perceiver_graph_models import MoleculePerceiverModel, MoleculeTransformerEncoderModel,\
     PCBAtoHIVPerceiverTransferModel
+from models.gnn_models import MoleculeGNNModel
 from models.loss_functions import CombinedCEandAUCLoss, SoftAUC, MultitaskCrossEntropyLoss
 
 
@@ -67,6 +68,8 @@ def parse_args():
 
     parser.add_argument("--weight_tie_layers", default=False, type=lambda s: s.lower() == 'true')
     parser.add_argument("--node_edge_cross_attn", default=False, type=lambda s: s.lower() == 'true')
+    parser.add_argument("--connection_bias", default=False, type=lambda s: s.lower() == 'true')
+    parser.add_argument("--deepperceiver", default=False, type=lambda s: s.lower() == 'true')
     
     parser.add_argument("--nystrom", dest="nystrom", action="store_true")
     parser.set_defaults(nystrom=False)
@@ -402,9 +405,11 @@ def make_model(args):
                                        p_attn_dropout=args.attn_dropout, p_ff_dropout=args.ff_dropout,
                                        p_weight_tie_layers=args.weight_tie_layers,
                                        p_node_edge_cross_attn=args.node_edge_cross_attn,
-                                       p_num_outputs=num_outputs_dict[model_dataset], connection_bias=False,
+                                       p_num_outputs=num_outputs_dict[model_dataset],
+                                       connection_bias=args.connection_bias,
                                        multi_classification=args.multi_classifier, num_classifiers=args.num_classifier,
-                                       classifier_transformer_layers=args.classifier_transformer_layers)
+                                       classifier_transformer_layers=args.classifier_transformer_layers,
+                                       deepperceiver=args.deepperceiver)
     elif args.model == "transformer":
         model = MoleculeTransformerEncoderModel(atom_emb_dim=args.atom_emb_dim, bond_emb_dim=args.bond_emb_dim,
                                                 node_preprocess_dim=args.k_eigs + args.H,
@@ -413,6 +418,8 @@ def make_model(args):
                                                 attn_dropout=args.attn_dropout, ff_dropout=args.ff_dropout,
                                                 num_outputs=num_outputs_dict[model_dataset],
                                                 nystrom=args.nystrom, n_landmarks=args.landmarks)
+    elif args.model == "gnn":
+        model = MoleculeGNNModel(num_tasks=num_outputs_dict[model_dataset])
     else:
         raise Exception("invalid model type")
     if args.load is not None:
